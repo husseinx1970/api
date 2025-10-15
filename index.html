@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Jaffar ∞ Vision — Web (TFJS v2.2 Debug)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    *{box-sizing:border-box}html,body{height:100%;margin:0}
+    body{font-family:Inter,Segoe UI,Arial,sans-serif;background:#0b0f19;color:#e9eefb;overflow:hidden}
+    #bg{position:fixed;inset:0;z-index:0}
+    .overlay{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;height:100%;padding:24px}
+    .brand{position:absolute;top:24px;left:32px;font-weight:800;font-size:28px;color:#cde3ff;text-shadow:0 0 18px rgba(120,180,255,.4)}
+    .brand span{margin-left:6px;color:#86ffe5}
+    .panel{width:min(1100px,94vw);padding:18px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter: blur(12px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+    button,select,input[type=range]{background:#1a71ff;color:#fff;border:none;padding:10px 12px;border-radius:10px;font-weight:600;cursor:pointer}
+    select{background:#0f1322;border:1px solid rgba(255,255,255,.15);color:#cde3ff}
+    input[type=range]{width:160px}
+    .pill{padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#cde3ff;font-weight:700}
+    .stack{position:relative;width:100%}
+    #cam{width:100%;max-height:58vh;border-radius:12px;background:#000;display:block}
+    #overlay{position:absolute;left:0;top:0;pointer-events:none}
+    .desc{min-height:28px;margin-top:8px;padding:10px 12px;background:rgba(10,16,28,.55);border:1px solid rgba(255,255,255,.12);border-radius:10px}
+    .debug{margin-top:8px;padding:10px 12px;background:rgba(255,100,100,.1);border:1px solid rgba(255,150,150,.25);border-radius:10px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;max-height:22vh;overflow:auto}
+    .right{margin-left:auto}
+  </style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="overlay">
+    <div class="brand">Jaffar<span>∞</span> Vision</div>
+    <div class="panel">
+      <div class="row">
+        <button id="startBtn">Start Camera</button>
+        <button id="autoBtn">Auto: OFF</button>
+        <button id="snapBtn" style="background:#15b26b">DETECT ONCE</button>
+        <label class="pill">Conf <span id="confVal">0.4</span></label>
+        <input id="conf" type="range" min="0.2" max="0.9" step="0.05" value="0.4">
+        <select id="camSelect" title="Camera"></select>
+        <span class="pill right" id="status">Model: loading…</span>
+      </div>
+      <div class="stack">
+        <video id="cam" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+      </div>
+      <div id="desc" class="desc">No clear objects.</div>
+      <div id="dbg" class="debug">Debug log…</div>
+    </div>
+  </div>
+
+  <script>
+    // BG particles
+    const b=document.getElementById('bg'); const bx=b.getContext('2d');
+    let W,H,P=[]; const N=100; function R(a,b){return Math.random()*(b-a)+a}
+    function size(){W=b.width=innerWidth; H=b.height=innerHeight; P=[...Array(N)].map(_=>({x:R(0,W),y:R(0,H),vx:R(-.3,.3),vy:R(-.3,.3),r:R(.6,1.8),a:R(.25,.85)}))}
+    addEventListener('resize', size); size(); (function loop(){bx.clearRect(0,0,W,H); for(const p of P){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;bx.beginPath();bx.arc(p.x,p.y,p.r,0,Math.PI*2);bx.fillStyle=`rgba(120,180,255,${p.a})`;bx.fill()} requestAnimationFrame(loop)})();
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+
+  <script>
+    const cam=document.getElementById('cam'), overlay=document.getElementById('overlay');
+    const startBtn=document.getElementById('startBtn'), autoBtn=document.getElementById('autoBtn'), snapBtn=document.getElementById('snapBtn');
+    const conf=document.getElementById('conf'), confVal=document.getElementById('confVal'), camSelect=document.getElementById('camSelect');
+    const statusEl=document.getElementById('status'), desc=document.getElementById('desc'), dbg=document.getElementById('dbg');
+
+    function log(x){ dbg.textContent += '\\n' + x; dbg.scrollTop = dbg.scrollHeight; console.log(x); }
+
+    let model=null, auto=false, rafId=null, currentDeviceId=null;
+
+    function fitOverlay(){
+      overlay.width = cam.videoWidth || 640;
+      overlay.height = cam.videoHeight || 480;
+      overlay.style.width = cam.clientWidth + 'px';
+      overlay.style.height = cam.clientHeight + 'px';
+    }
+
+    function drawBoxes(preds){
+      const ctx=overlay.getContext('2d');
+      ctx.clearRect(0,0,overlay.width,overlay.height);
+      ctx.lineWidth=2; ctx.font='14px ui-monospace, Consolas, monospace';
+      const threshold = parseFloat(conf.value);
+      const keep = preds.filter(p=>p.score>=threshold);
+      keep.forEach(p=>{
+        const [x,y,w,h]=p.bbox;
+        ctx.strokeStyle='rgba(120,180,255,0.95)';
+        ctx.fillStyle='rgba(10,16,28,0.55)';
+        ctx.strokeRect(x,y,w,h);
+        const label=`${p.class} (${p.score.toFixed(2)})`;
+        const tw=ctx.measureText(label).width+8;
+        ctx.fillRect(x, y-18, tw, 18);
+        ctx.fillStyle='#cde3ff';
+        ctx.fillText(label, x+4, y-5);
+      });
+      if(keep.length===0) desc.textContent = 'No clear objects.';
+      else{
+        const counts = {};
+        keep.forEach(p=> counts[p.class]=(counts[p.class]||0)+1 );
+        const ordered = Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(', ');
+        desc.textContent = 'Summary: ' + ordered + '.';
+      }
+    }
+
+    async function detectOnce(){
+      try{
+        fitOverlay();
+        const preds = await model.detect(cam);
+        log('Preds: '+JSON.stringify(preds.slice(0,3)));
+        drawBoxes(preds);
+      }catch(e){ log('detect error: '+e.message); }
+    }
+
+    function autoLoop(){ if(!auto) return; detectOnce().finally(()=>{ rafId=requestAnimationFrame(autoLoop); }); }
+
+    async function listCams(){
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      const vids = devs.filter(d=>d.kind==='videoinput');
+      camSelect.innerHTML = vids.map(v=>`<option value="${v.deviceId}">${v.label||'Camera'}</option>`).join('');
+      if(vids[0]) currentDeviceId = vids[0].deviceId;
+      log('Cams: '+vids.map(v=>v.label||v.deviceId).join(', '));
+    }
+
+    async function startStream(id=null){
+      const cs = { video: id?{deviceId:{exact:id}}:{width:{ideal:640},height:{ideal:480}}, audio:false };
+      const s = await navigator.mediaDevices.getUserMedia(cs);
+      cam.srcObject = s;
+      await new Promise(r=> cam.onloadedmetadata=r);
+      await cam.play();
+      fitOverlay();
+      log('Cam started '+cam.videoWidth+'x'+cam.videoHeight);
+      startBtn.textContent='Camera: ON';
+    }
+
+    async function startCam(){
+      try{ await listCams(); await startStream(currentDeviceId); }
+      catch(e){ log('startCam error: '+e.name+' '+e.message); statusEl.textContent='Camera blocked'; }
+    }
+
+    startBtn.onclick = startCam;
+    camSelect.onchange = async e=>{ currentDeviceId=e.target.value; if(cam.srcObject){ cam.srcObject.getTracks().forEach(t=>t.stop()); } await startStream(currentDeviceId); };
+    snapBtn.onclick = detectOnce;
+    autoBtn.onclick = ()=>{ auto=!auto; autoBtn.textContent='Auto: '+(auto?'ON':'OFF'); if(auto) autoLoop(); else if(rafId) cancelAnimationFrame(rafId); };
+    conf.oninput = ()=> confVal.textContent = conf.value;
+
+    // Load model
+    cocoSsd.load({base:'lite_mobilenet_v2'}).then(m=>{
+      model=m; statusEl.textContent='Model: ready ✅'; log('Model ready');
+    }).catch(e=>{ statusEl.textContent='Model failed'; log('Model load error: '+e.message); });
+
+    window.addEventListener('load', ()=> setTimeout(startCam, 300));
+  </script>
+</body>
+</html>
