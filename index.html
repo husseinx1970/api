@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Jaffar ∞ Vision — Web (TFJS v2)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    *{box-sizing:border-box}html,body{height:100%;margin:0}
+    body{font-family:Inter,Segoe UI,Arial,sans-serif;background:#0b0f19;color:#e9eefb;overflow:hidden}
+    #bg{position:fixed;inset:0;z-index:0}
+    .overlay{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;height:100%;padding:24px}
+    .brand{position:absolute;top:24px;left:32px;font-weight:800;font-size:28px;letter-spacing:1px;color:#cde3ff;text-shadow:0 0 18px rgba(120,180,255,.4)}
+    .brand span{margin-left:6px;color:#86ffe5}
+    .panel{width:min(1100px,94vw);padding:18px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter: blur(12px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+    button,select,input[type=range]{background:#1a71ff;color:#fff;border:none;padding:10px 12px;border-radius:10px;font-weight:600;cursor:pointer}
+    select{background:#0f1322;border:1px solid rgba(255,255,255,.15);color:#cde3ff}
+    input[type=range]{width:160px}
+    .pill{padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#cde3ff;font-weight:700}
+    .tip{opacity:.85;font-size:13px}
+    .stack{position:relative;width:100%}
+    #preview,#overlay{width:100%;max-height:58vh;border-radius:12px;background:#000;display:block}
+    #overlay{position:absolute;left:0;top:0;pointer-events:none}
+    .desc{min-height:28px;margin-top:8px;padding:10px 12px;background:rgba(10,16,28,.55);border:1px solid rgba(255,255,255,.12);border-radius:10px;direction:auto}
+    .footer{opacity:.7;margin-top:8px;font-size:12px}
+    .right{margin-left:auto}
+  </style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="overlay">
+    <div class="brand">Jaffar<span>∞</span> Vision</div>
+    <div class="panel">
+      <div class="row">
+        <button id="startBtn">Start Camera</button>
+        <button id="autoBtn">Auto: OFF</button>
+        <button id="snapBtn">Detect Once</button>
+        <label class="pill">Conf <span id="confVal">0.5</span></label>
+        <input id="conf" type="range" min="0.2" max="0.9" step="0.05" value="0.5">
+        <select id="camSelect" title="Camera"></select>
+        <button id="langBtn">AR</button>
+        <span class="tip" id="status">Loading model…</span>
+        <span class="right pill" id="fps">FPS: -</span>
+      </div>
+      <div class="stack">
+        <video id="cam" autoplay playsinline muted style="display:none"></video>
+        <canvas id="preview"></canvas>
+        <canvas id="overlay"></canvas>
+      </div>
+      <div id="desc" class="desc"></div>
+      <div class="footer">If the video is blank: click the lock icon (🔒) near the address bar → allow camera → reload.</div>
+    </div>
+  </div>
+
+  <script>
+    // Particles
+    const b = document.getElementById('bg'); const bx=b.getContext('2d');
+    let W,H,P=[]; const N=120; function R(a,b){return Math.random()*(b-a)+a}
+    function size(){W=b.width=innerWidth; H=b.height=innerHeight; P=[...Array(N)].map(_=>({x:R(0,W),y:R(0,H),vx:R(-.3,.3),vy:R(-.3,.3),r:R(.6,1.8),a:R(.25,.85)}))}
+    addEventListener('resize', size); size(); (function loop(){bx.clearRect(0,0,W,H); for(const p of P){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;bx.beginPath();bx.arc(p.x,p.y,p.r,0,Math.PI*2);bx.fillStyle=`rgba(120,180,255,${p.a})`;bx.fill()} requestAnimationFrame(loop)})();
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+
+  <script>
+    // UI elements
+    const cam = document.getElementById('cam');
+    const preview = document.getElementById('preview');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('startBtn');
+    const autoBtn = document.getElementById('autoBtn');
+    const snapBtn = document.getElementById('snapBtn');
+    const conf = document.getElementById('conf');
+    const confVal = document.getElementById('confVal');
+    const camSelect = document.getElementById('camSelect');
+    const langBtn = document.getElementById('langBtn');
+    const desc = document.getElementById('desc');
+    const statusEl = document.getElementById('status');
+    const fpsEl = document.getElementById('fps');
+
+    // i18n
+    let LANG = 'EN';
+    const T = {
+      EN: {
+        loading: 'Loading model…', ready: 'Model ready ✅', camBlocked: 'Camera blocked. Click 🔒 → Allow camera → reload.',
+        top: 'Top', summary: 'Summary', person_singular:'There is 1 person.', person_plural: n=>`There are ${n} persons.`
+      },
+      AR: {
+        loading: 'جاري تحميل النموذج…', ready: 'النموذج جاهز ✅', camBlocked: 'تم حظر الكاميرا. اضغط على 🔒 → اسمح بالكاميرا → إعادة تحميل.',
+        top: 'الأعلى', summary: 'الملخص', person_singular:'يوجد شخص واحد.', person_plural: n=>`يوجد ${n} أشخاص.`
+      }
+    };
+    function tr(key, ...args){ const v=T[LANG][key]; return (typeof v==='function') ? v(...args) : v; }
+
+    // State
+    let model=null, auto=false, rafId=null, currentDeviceId=null;
+    let lastTime=performance.now(), frames=0;
+
+    // FPS
+    function tickFPS(){
+      frames++;
+      const now = performance.now();
+      if(now-lastTime>1000){
+        fpsEl.textContent = 'FPS: ' + frames;
+        frames = 0; lastTime=now;
+      }
+      requestAnimationFrame(tickFPS);
+    }
+    tickFPS();
+
+    // Draw boxes
+    function drawBoxes(preds){
+      const ctx = overlay.getContext('2d');
+      ctx.clearRect(0,0,overlay.width,overlay.height);
+      ctx.lineWidth = 2;
+      ctx.font = '14px ui-monospace, SFMono-Regular, Consolas, monospace';
+      preds.forEach(p=>{
+        if(p.score < parseFloat(conf.value)) return;
+        const [x,y,w,h] = p.bbox;
+        ctx.strokeStyle='rgba(120,180,255,0.95)';
+        ctx.fillStyle='rgba(10,16,28,0.55)';
+        ctx.strokeRect(x,y,w,h);
+        const label = `${p.class} (${p.score.toFixed(2)})`;
+        const tw = ctx.measureText(label).width + 8;
+        ctx.fillRect(x, y-18, tw, 18);
+        ctx.fillStyle = '#cde3ff';
+        ctx.fillText(label, x+4, y-5);
+      });
+    }
+
+    function buildSummary(preds){
+      const filtered = preds.filter(p=>p.score >= parseFloat(conf.value));
+      if(!filtered.length) return LANG==='AR' ? 'لا توجد كائنات واضحة.' : 'No clear objects.';
+      const counts = {};
+      filtered.forEach(p=>{counts[p.class]=(counts[p.class]||0)+1;});
+      const top = [...filtered].sort((a,b)=>b.score-a.score).slice(0,3);
+      const parts=[];
+      parts.push(tr('top') + ': ' + top.map(p=>`${p.class} (${p.score.toFixed(2)})`).join(', ') + '.');
+      const ordered = Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(', ');
+      parts.push(tr('summary') + ': ' + ordered + '.');
+      if(counts['person']) parts.push(counts['person']===1? tr('person_singular') : tr('person_plural', counts['person']));
+      return parts.join(' ');
+    }
+
+    async function startStream(deviceId=null){
+      const constraints = { video: deviceId ? {deviceId:{exact:deviceId}} : true, audio:false };
+      const s = await navigator.mediaDevices.getUserMedia(constraints);
+      cam.srcObject = s;
+      await new Promise(r => cam.onloadedmetadata = r);
+      preview.width = cam.videoWidth; preview.height = cam.videoHeight;
+      overlay.width = cam.videoWidth; overlay.height = cam.videoHeight;
+      const pctx = preview.getContext('2d');
+      (function loop(){ pctx.drawImage(cam, 0, 0, preview.width, preview.height); requestAnimationFrame(loop); })();
+      startBtn.textContent = 'Camera: ON';
+    }
+
+    async function listCams(){
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const vids = devices.filter(d=>d.kind==='videoinput');
+      camSelect.innerHTML = vids.map(v=>`<option value="${v.deviceId}">${v.label||'Camera'}</option>`).join('');
+      if(vids[0]) currentDeviceId = vids[0].deviceId;
+    }
+
+    async function startCam(){
+      try{
+        await listCams();
+        await startStream(currentDeviceId);
+      }catch(e){
+        console.error(e);
+        statusEl.textContent = tr('camBlocked');
+      }
+    }
+
+    async function detectOnce(){
+      if(!model) return;
+      const preds = await model.detect(preview);
+      drawBoxes(preds);
+      desc.textContent = buildSummary(preds);
+    }
+
+    function autoLoop(){
+      if(!auto) return;
+      detectOnce().finally(()=>{ rafId = requestAnimationFrame(autoLoop); });
+    }
+
+    // UI handlers
+    startBtn.onclick = startCam;
+    camSelect.onchange = async (e)=>{
+      currentDeviceId = e.target.value;
+      if(cam.srcObject){
+        cam.srcObject.getTracks().forEach(t=>t.stop());
+      }
+      await startStream(currentDeviceId);
+    };
+    autoBtn.onclick = ()=>{ auto = !auto; autoBtn.textContent = 'Auto: ' + (auto?'ON':'OFF'); if(auto) autoLoop(); else if(rafId) cancelAnimationFrame(rafId); };
+    snapBtn.onclick = detectOnce;
+    conf.oninput = ()=>{ confVal.textContent = conf.value; };
+    langBtn.onclick = ()=>{ LANG = (LANG==='EN'?'AR':'EN'); langBtn.textContent = (LANG==='EN'?'AR':'EN'); desc.dir = (LANG==='AR'?'rtl':'ltr'); statusEl.textContent = T[LANG].ready || ''; };
+
+    // Load model
+    statusEl.textContent = T[LANG].loading;
+    cocoSsd.load({base:'lite_mobilenet_v2'}).then(m=>{
+      model = m;
+      statusEl.textContent = tr('ready');
+    }).catch(e=>{ console.error(e); statusEl.textContent = 'Model load failed'; });
+
+    window.addEventListener('load', ()=> setTimeout(startCam, 400));
+  </script>
+</body>
+</html>
