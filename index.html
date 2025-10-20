@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Jaffar ∞ Vision v3 — محسّن (TFJS + COCO-SSD)</title>
+  <title>Jaffar ∞ Vision — Web (TFJS v3 Boosted+)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     *{box-sizing:border-box}html,body{height:100%;margin:0}
     body{font-family:Inter,Segoe UI,Arial,sans-serif;background:#0b0f19;color:#e9eefb;overflow:hidden}
     #bg{position:fixed;inset:0;z-index:0}
     .overlay{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;height:100%;padding:24px}
-    .brand{position:absolute;top:24px;left:32px;font-weight:800;font-size:28px;color:#cde3ff;text-shadow:0 0 18px rgba(120,180,255,.4)}
+    .brand{position:absolute;top:24px;left:32px;font-weight:800;font-size:28px;color:#cde3ff;text-shadow:0 0 18px rgba(120,180,255,.4);user-select:none;cursor:default}
     .brand span{margin-left:6px;color:#86ffe5}
     .panel{width:min(1100px,94vw);padding:18px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter: blur(12px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
     .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
@@ -22,56 +22,37 @@
     #overlay{position:absolute;left:0;top:0;pointer-events:none}
     .desc{min-height:28px;margin-top:8px;padding:10px 12px;background:rgba(10,16,28,.55);border:1px solid rgba(255,255,255,.12);border-radius:10px}
     .debug{margin-top:8px;padding:10px 12px;background:rgba(255,100,100,.1);border:1px solid rgba(255,150,150,.25);border-radius:10px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;max-height:22vh;overflow:auto}
-    .right{margin-inline-start:auto}
-    .switch{background:#0f1322;border:1px solid rgba(255,255,255,.15)}
-    .stats{margin-top:8px;padding:10px 12px;background:rgba(100,255,180,.08);border:1px solid rgba(100,255,180,.25);border-radius:10px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;max-height:22vh;overflow:auto;display:none}
-    .warn{background:rgba(255,200,0,.12);border:1px solid rgba(255,200,0,.35)}
+    .right{margin-left:auto}
+    .hint{margin-top:8px;padding:10px 12px;background:rgba(255,200,0,.12);border:1px solid rgba(255,200,0,.35);border-radius:10px;display:none}
+    .stats{position:absolute;right:20px;bottom:24px;min-width:260px;max-width:40vw;max-height:40vh;overflow:auto;padding:10px 12px;border-radius:10px;background:rgba(100,255,180,.08);border:1px solid rgba(100,255,180,.25);font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;display:none}
   </style>
 </head>
 <body>
   <canvas id="bg"></canvas>
   <div class="overlay">
-    <div class="brand">Jaffar<span>∞</span> Vision</div>
+    <div class="brand" id="brand">Jaffar<span>∞</span> Vision</div>
     <div class="panel">
       <div class="row">
-        <button id="startBtn">تشغيل الكاميرا</button>
-        <button id="autoBtn">تلقائي: إيقاف</button>
-        <button id="snapBtn" style="background:#15b26b">التقاط فوري</button>
-
-        <label class="pill">الوثوق <span id="confVal">0.5</span></label>
+        <button id="startBtn">Start Camera</button>
+        <button id="autoBtn">Auto: OFF</button>
+        <button id="snapBtn" style="background:#15b26b">DETECT ONCE</button>
+        <label class="pill">Conf <span id="confVal">0.5</span></label>
         <input id="conf" type="range" min="0.2" max="0.95" step="0.05" value="0.5">
-
-        <select id="camSelect" title="الكاميرا"></select>
-
-        <select id="backend" class="switch" title="Backend">
-          <option value="webgpu">WebGPU</option>
-          <option value="webgl" selected>WebGL</option>
-          <option value="wasm">WASM</option>
-        </select>
-
-        <label class="pill"><input id="speak" type="checkbox" style="accent-color:#1a71ff"> صوت</label>
-        <label class="pill"><input id="showColor" type="checkbox" style="accent-color:#1a71ff" checked> ألوان</label>
-
-        <button id="showStatsBtn" class="right">إحصاءات</button>
-        <button id="clearMemBtn" style="background:#d9534f">مسح الذاكرة</button>
-
-        <span class="pill" id="status">النموذج: جارِ التحميل…</span>
-        <span class="pill" id="fps">FPS: —</span>
+        <select id="camSelect" title="Camera"></select>
+        <span class="pill right" id="status">Model: loading…</span>
       </div>
-
       <div class="stack">
         <video id="cam" autoplay playsinline muted></video>
         <canvas id="overlay"></canvas>
       </div>
-
-      <div id="desc" class="desc">لا توجد أجسام واضحة.</div>
-      <div id="hint" class="desc warn" style="display:none"></div>
-      <div id="stats" class="stats"></div>
+      <div id="desc" class="desc">No clear objects.</div>
+      <div id="hint" class="hint"></div>
       <div id="dbg" class="debug">Debug log…</div>
     </div>
+    <div id="stats" class="stats"></div>
   </div>
 
-  <!-- خلفية جزيئات -->
+  <!-- BG particles -->
   <script>
     const b=document.getElementById('bg'); const bx=b.getContext('2d');
     let W,H,P=[]; const N=100; function R(a,b){return Math.random()*(b-a)+a}
@@ -85,58 +66,38 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
 
   <script>
-    // عناصر DOM
+    // DOM
     const cam=document.getElementById('cam'), overlay=document.getElementById('overlay');
     const startBtn=document.getElementById('startBtn'), autoBtn=document.getElementById('autoBtn'), snapBtn=document.getElementById('snapBtn');
     const conf=document.getElementById('conf'), confVal=document.getElementById('confVal'), camSelect=document.getElementById('camSelect');
-    const statusEl=document.getElementById('status'), desc=document.getElementById('desc'), dbg=document.getElementById('dbg');
-    const backendSel=document.getElementById('backend'), fpsEl=document.getElementById('fps');
-    const speakEl=document.getElementById('speak'), showColorEl=document.getElementById('showColor');
-    const statsEl=document.getElementById('stats'), showStatsBtn=document.getElementById('showStatsBtn'), clearMemBtn=document.getElementById('clearMemBtn');
-    const hint=document.getElementById('hint');
+    const statusEl=document.getElementById('status'), desc=document.getElementById('desc'), dbg=document.getElementById('dbg'), hint=document.getElementById('hint');
+    const statsBox=document.getElementById('stats'), brand=document.getElementById('brand');
 
     function log(x){ dbg.textContent += '\\n' + x; dbg.scrollTop = dbg.scrollHeight; console.log(x); }
 
-    // إعدادات عامة
+    // State
     let model=null, auto=false, rafId=null, currentDeviceId=null;
-    let tracks=[]; // تتبّع {id, class, bbox, score, miss}
+    let tracks=[]; // {id, class, bbox, score, miss}
     let nextId=1;
     let lastTime=performance.now(), frames=0;
+    let lastRun=0, minInterval=40; // ~25 FPS throttle for auto-loop
+    let devicesCache=[]; let camIndex=0;
 
-    // تلميح HTTPS/تصاريح
-    function showHint(msg){ hint.textContent=msg; hint.style.display='block'; }
+    // Memory
+    function memLoad(){ try{ return JSON.parse(localStorage.getItem('visionMemory')||'{}'); }catch{ return {}; } }
+    function memSave(obj){ localStorage.setItem('visionMemory', JSON.stringify(obj)); }
+    function memInc(label){ const m=memLoad(); m[label]=(m[label]||0)+1; memSave(m); }
+    function memClear(){ localStorage.removeItem('visionMemory'); }
 
-    // ذاكرة طويلة الأمد (localStorage)
-    function loadMemory(){ try{ return JSON.parse(localStorage.getItem('visionMemory')||'{}'); }catch{ return {}; } }
-    function saveMemory(obj){ localStorage.setItem('visionMemory', JSON.stringify(obj)); }
-    function incMemory(cls){
-      const mem = loadMemory(); mem[cls] = (mem[cls]||0) + 1; saveMemory(mem);
-    }
-    function clearMemory(){ localStorage.removeItem('visionMemory'); }
-    function showStats(){
-      const mem = loadMemory();
-      const entries = Object.entries(mem).sort((a,b)=>b[1]-a[1]);
-      statsEl.style.display = statsEl.style.display==='none' ? 'block' : 'none';
-      if(entries.length===0){ statsEl.textContent='لا توجد بيانات محفوظة بعد.'; }
-      else{ statsEl.textContent = 'إحصاءات (localStorage):\\n' + entries.map(([k,v])=>`- ${k}: ${v}`).join('\\n'); }
-    }
-
-    // قاموس عربي للفئات الشائعة
-    const AR = {
-      person:'شخص', car:'سيارة', bicycle:'دراجة', motorcycle:'دراجة نارية', bus:'حافلة', truck:'شاحنة', traffic_light:'إشارة مرور',
-      stop_sign:'إشارة توقف', fire_hydrant:'صمام حريق', bench:'مقعد', cat:'قط', dog:'كلب', bird:'طائر', horse:'حصان', sheep:'خروف', cow:'بقرة',
-      bottle:'زجاجة', cup:'كوب', bowl:'وعاء', chair:'كرسي', couch:'أريكة', potted_plant:'نبتة', tv:'تلفاز', laptop:'حاسوب محمول',
-      keyboard:'لوحة مفاتيح', cell_phone:'هاتف', book:'كتاب', backpack:'حقيبة ظهر', umbrella:'مظلّة'
-    };
-    const pretty = c => AR[c] || c;
-
-    // اختيار Backend (WebGPU/WebGL/WASM)
-    async function pickBestBackend(){
-      const want = backendSel.value;
-      try{ await tf.setBackend(want); }catch{ await tf.setBackend('webgl'); }
-      await tf.ready();
-      try{ tf.env().set('WEBGPU_USE_FP16', true); }catch(e){}
-      statusEl.textContent = `المعالج: ${tf.getBackend()} — تحميل النموذج…`;
+    // Backend choice
+    async function pickBackend(){
+      const prefs=['webgpu','webgl','wasm'];
+      for(const b of prefs){
+        try{ await tf.setBackend(b); await tf.ready(); log('Backend: '+tf.getBackend()); break; }
+        catch(e){ log('Backend fail '+b+': '+e.message); }
+      }
+      try{ tf.env().set('WEBGPU_USE_FP16', true); }catch{}
+      statusEl.textContent = `Model: loading… (backend ${tf.getBackend()})`;
     }
 
     function fitOverlay(){
@@ -146,33 +107,31 @@
       overlay.style.height = cam.clientHeight + 'px';
     }
 
-    // لون مبسّط/متوسط داخل الصندوق
+    // Color
+    function simpleColorName(r,g,b){
+      const max=Math.max(r,g,b), min=Math.min(r,g,b);
+      const s = max===0?0:(max-min)/max;
+      if(max<40) return 'black';
+      if(min>220) return 'white';
+      if(s<0.1) return 'gray';
+      if(r>g+20 && r>b+20) return 'red';
+      if(g>r+20 && g>b+20) return 'green';
+      if(b>r+20 && b>g+20) return 'blue';
+      if(r>180 && g>180 && b<120) return 'yellow';
+      return 'color';
+    }
     function avgColorInBox([x,y,w,h]){
       const tmp=document.createElement('canvas'); tmp.width=Math.max(1,Math.floor(w)); tmp.height=Math.max(1,Math.floor(h));
-      const tctx=tmp.getContext('2d', { willReadFrequently:true });
+      const tctx=tmp.getContext('2d',{willReadFrequently:true});
       tctx.drawImage(cam, x, y, w, h, 0, 0, tmp.width, tmp.height);
       const {data} = tctx.getImageData(0,0,tmp.width,tmp.height);
-      let r=0,g=0,b=0, n=data.length/4;
+      let r=0,g=0,b=0,n=data.length/4;
       for(let i=0;i<data.length;i+=4){ r+=data[i]; g+=data[i+1]; b+=data[i+2]; }
       r=Math.round(r/n); g=Math.round(g/n); b=Math.round(b/n);
-      // اسم لون بسيط
-      const name = simpleColorName(r,g,b);
-      return {r,g,b,name};
-    }
-    function simpleColorName(r,g,b){
-      const max = Math.max(r,g,b), min=Math.min(r,g,b);
-      const s = max===0?0:(max-min)/max;
-      const labels = [
-        {n:'أسود',c:()=>max<40},{n:'أبيض',c:()=>min>220},{n:'رمادي',c:()=>s<0.1},
-        {n:'أحمر',c:()=>r>g+20 && r>b+20},{n:'أخضر',c:()=>g>r+20 && g>b+20},{n:'أزرق',c:()=>b>r+20 && b>g+20},
-        {n:'أصفر',c:()=>r>180 && g>180 && b<120},{n:'برتقالي',c:()=>r>200 && g>120 && b<80},
-        {n:'بنفسجي',c:()=>r>120 && b>120 && g<100},{n:'زهري',c:()=>r>200 && g<150 && b>150},{n:'سياني',c:()=>g>150 && b>150 && r<120}
-      ];
-      for(const L of labels) if(L.c()) return L.n;
-      return 'غير محدد';
+      return {r,g,b,name:simpleColorName(r,g,b)};
     }
 
-    // IoU + تتبّع
+    // Tracking (IoU + smoothing)
     function iou(a,b){
       const [ax,ay,aw,ah]=a, [bx,by,bw,bh]=b;
       const x1=Math.max(ax,bx), y1=Math.max(ay,by);
@@ -182,18 +141,16 @@
       return ua>0? inter/ua : 0;
     }
     function updateTracks(dets, threshold){
-      const matched = new Set();
-      const newTracks=[];
+      const matched=new Set(), newTracks=[];
       for(const t of tracks){
-        let best=-1, bestIou=0, bestIdx=-1;
+        let best=-1, bestIoU=0, bestIdx=-1;
         for(let i=0;i<dets.length;i++){
           if(matched.has(i)) continue;
-          const d=dets[i];
-          if(d.score<threshold || d.class===undefined) continue;
+          const d=dets[i]; if(d.score<threshold) continue;
           const ov = iou(t.bbox, d.bbox);
-          if(ov>bestIou){ bestIou=ov; bestIdx=i; best=d; }
+          if(ov>bestIoU){ bestIoU=ov; bestIdx=i; best=d; }
         }
-        if(bestIou>0.25){
+        if(bestIoU>0.25){
           matched.add(bestIdx);
           const nb = best.bbox.map((v,i)=> 0.7*t.bbox[i] + 0.3*v );
           newTracks.push({id:t.id, class:best.class, bbox:nb, score:best.score, miss:0});
@@ -212,17 +169,7 @@
       return tracks.filter(t=>t.miss===0);
     }
 
-    // FPS
-    function tickFps(){
-      frames++;
-      const now=performance.now();
-      if(now-lastTime>1000){
-        fpsEl.textContent = 'FPS: ' + frames;
-        frames=0; lastTime=now;
-      }
-    }
-
-    // رسم
+    // Draw / summary / FPS
     function drawBoxes(items){
       const ctx=overlay.getContext('2d');
       ctx.clearRect(0,0,overlay.width,overlay.height);
@@ -232,23 +179,27 @@
         ctx.strokeStyle='rgba(120,180,255,0.95)';
         ctx.fillStyle='rgba(10,16,28,0.75)';
         ctx.beginPath(); ctx.roundRect?.(x,y,w,h,8); ctx.stroke();
-        let tag = `${pretty(o.class)} ${(o.color && showColorEl.checked)?'— '+o.color.name:''} (${o.score.toFixed(2)}) #${o.id}`;
-        const tw = ctx.measureText(tag).width+10;
+        let tag = `${o.class}${o.color?` (${o.color.name})`:''} ${o.score.toFixed(2)} #${o.id}`;
+        const tw = ctx.measureText(tag).width+8;
         ctx.fillRect(x, y-20, tw, 20);
-        ctx.fillStyle='#cde3ff'; ctx.fillText(tag, x+5, y-5);
+        ctx.fillStyle='#cde3ff'; ctx.fillText(tag, x+4, y-6);
       });
     }
-
-    // تلخيص
     function summarize(items){
-      if(items.length===0){ desc.textContent='لا توجد أجسام واضحة.'; return; }
-      const counts = {};
-      items.forEach(p=> counts[pretty(p.class)] = (counts[pretty(p.class)]||0)+1 );
-      const ordered = Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join('، ');
-      desc.textContent = 'ملخص: ' + ordered + '.';
+      if(items.length===0){ desc.textContent='No clear objects.'; return; }
+      const counts={}; items.forEach(p=> counts[p.class]=(counts[p.class]||0)+1 );
+      const ordered=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(', ');
+      desc.textContent='Summary: '+ordered+'.';
+    }
+    function tickFps(){
+      frames++; const now=performance.now();
+      if(now-lastTime>1000){
+        statusEl.textContent=`Model: ready ✅ — FPS ${frames}`;
+        frames=0; lastTime=now;
+      }
     }
 
-    // اكتشاف مرة واحدة
+    // Detection (with throttle in auto mode)
     async function detectOnce(){
       try{
         fitOverlay();
@@ -260,53 +211,123 @@
 
         const active = updateTracks(keep, threshold);
 
-        // الذاكرة طويلة الأمد: عدّادات الفئات
-        active.forEach(a=> incMemory(pretty(a.class)));
-
-        // الألوان + النطق
+        // Memory + color
         active.forEach(a=>{
-          if(showColorEl.checked){ a.color = avgColorInBox(a.bbox); }
+          a.color = avgColorInBox(a.bbox);
+          memInc(a.class);
         });
 
         drawBoxes(active);
         summarize(active);
-
-        if(speakEl.checked && active.length){
-          const top = active.slice(0,3).map(a=>`${pretty(a.class)} ${a.color? a.color.name:''}`).join('، ');
-          const u = new SpeechSynthesisUtterance(top);
-          u.lang='ar'; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
-        }
-
         tickFps();
       }catch(e){ log('detect error: '+e.message); }
     }
 
-    let auto=false, rafId=null;
-    function autoLoop(){ if(!auto) return; detectOnce().finally(()=>{ rafId=requestAnimationFrame(autoLoop); }); }
+    function autoLoop(t){
+      if(!auto) return;
+      // Throttle: فقط شغّل الكشف إذا مرّت minInterval ميلي ثانية
+      if(!lastRun || (t-lastRun)>=minInterval){
+        lastRun=t;
+        detectOnce().finally(()=>{ requestAnimationFrame(autoLoop); });
+      }else{
+        requestAnimationFrame(autoLoop);
+      }
+    }
 
+    // Camera
     async function listCams(){
       try{
         const devs = await navigator.mediaDevices.enumerateDevices();
         const vids = devs.filter(d=>d.kind==='videoinput');
-        camSelect.innerHTML = vids.map(v=>`<option value="${v.deviceId}">${v.label||'Camera'}</option>`).join('');
-        if(vids[0]) currentDeviceId = vids[0].deviceId;
+        devicesCache = vids;
+        camSelect.innerHTML = vids.map((v,i)=>`<option value="${v.deviceId}">${v.label||'Camera '+(i+1)}</option>`).join('');
+        if(vids[0]){ currentDeviceId = vids[0].deviceId; camIndex=0; }
         log('Cams: '+vids.map(v=>v.label||v.deviceId).join(', '));
       }catch(e){ log('enumerateDevices error: '+e.message); }
     }
-
     async function startStream(id=null){
-      // قيود متوافقة مع أغلب المتصفحات
-      const cs = {
-        video: id?{deviceId:{exact:id}}:{
-          facingMode: 'user',
-          width:{ideal:960}, height:{ideal:720},
-          frameRate:{ideal:30, max:60}
-        },
-        audio:false
-      };
+      const cs = { video: id?{deviceId:{exact:id}}:{width:{ideal:960},height:{ideal:720},frameRate:{ideal:30,max:60}}, audio:false };
       const s = await navigator.mediaDevices.getUserMedia(cs);
       cam.srcObject = s;
       await new Promise(r=> cam.onloadedmetadata=r);
       await cam.play();
       fitOverlay();
-      log('Cam started '+cam.videoWidth+'x'+
+      log('Cam started '+cam.videoWidth+'x'+cam.videoHeight);
+      startBtn.textContent='Camera: ON';
+      hint.style.display='none';
+    }
+    async function startCam(){
+      try{
+        if(location.protocol!=='https:' && location.hostname!=='localhost'){
+          hint.textContent='⚠️ Use HTTPS (GitHub Pages) to access the camera.'; hint.style.display='block';
+        }
+        await listCams(); await startStream(currentDeviceId);
+      }catch(e){
+        log('startCam error: '+e.name+' '+e.message);
+        statusEl.textContent='Camera blocked';
+        if(e.name==='NotAllowedError'){
+          hint.textContent='⚠️ Please allow camera access from the address bar.'; hint.style.display='block';
+        }else if(e.name==='NotFoundError'){
+          hint.textContent='⚠️ No camera found. Plug one or choose another from the selector.'; hint.style.display='block';
+        }
+      }
+    }
+
+    // Stats overlay (hidden UI)
+    function renderStats(){
+      const m = memLoad();
+      const entries = Object.entries(m).sort((a,b)=>b[1]-a[1]);
+      statsBox.textContent = entries.length? 'Stats (localStorage):\\n'+entries.map(([k,v])=>`- ${k}: ${v}`).join('\\n') : 'No memory yet.';
+    }
+    function toggleStats(){
+      renderStats();
+      statsBox.style.display = (statsBox.style.display==='none'||!statsBox.style.display)?'block':'none';
+    }
+
+    // UI wiring (unchanged controls)
+    startBtn.onclick = startCam;
+    camSelect.onchange = async e=>{ currentDeviceId=e.target.value; if(cam.srcObject){ cam.srcObject.getTracks().forEach(t=>t.stop()); } await startStream(currentDeviceId); };
+    snapBtn.onclick = detectOnce;
+    autoBtn.onclick = ()=>{ auto=!auto; autoBtn.textContent='Auto: '+(auto?'ON':'OFF'); if(auto) requestAnimationFrame(autoLoop); };
+    conf.oninput = ()=> confVal.textContent = conf.value;
+
+    // Keyboard shortcuts (no UI changes)
+    window.addEventListener('keydown', async (ev)=>{
+      if(ev.target && (ev.target.tagName==='INPUT' || ev.target.tagName==='TEXTAREA')) return;
+      if(ev.key==='a' || ev.key==='A'){ autoBtn.click(); }
+      else if(ev.key===' '){ ev.preventDefault(); snapBtn.click(); }
+      else if(ev.key==='+'){ conf.value = Math.min(0.95, (+conf.value + 0.05)).toFixed(2); conf.dispatchEvent(new Event('input')); }
+      else if(ev.key==='-'){ conf.value = Math.max(0.2, (+conf.value - 0.05)).toFixed(2); conf.dispatchEvent(new Event('input')); }
+      else if(ev.key==='c' || ev.key==='C'){
+        if(devicesCache.length>1){
+          camIndex = (camIndex+1)%devicesCache.length;
+          camSelect.selectedIndex = camIndex;
+          const id = devicesCache[camIndex].deviceId;
+          if(cam.srcObject){ cam.srcObject.getTracks().forEach(t=>t.stop()); }
+          await startStream(id);
+        }
+      }
+      else if(ev.key==='s' || ev.key==='S'){
+        if(ev.shiftKey){ memClear(); renderStats(); statsBox.style.display='block'; statsBox.textContent='Memory cleared.'; }
+        else toggleStats();
+      }
+    });
+
+    // Double-click the brand to toggle stats as well
+    brand.ondblclick = toggleStats;
+
+    // Init
+    (async function init(){
+      await pickBackend();
+      try{
+        model = await cocoSsd.load({base:'mobilenet_v2'});
+        statusEl.textContent='Model: ready ✅';
+        log('Model ready');
+      }catch(e){
+        statusEl.textContent='Model failed'; log('Model load error: '+e.message);
+      }
+      setTimeout(()=>startCam().catch(()=>{}), 300);
+    })();
+  </script>
+</body>
+</html>
