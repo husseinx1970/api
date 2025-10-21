@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Jaffar ∞ Vision — Web (TFJS v3 Boosted+ Pose)</title>
+  <title>Jaffar ∞ Vision — Web (TFJS + Pose + Hands + CLIP)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     *{box-sizing:border-box}html,body{height:100%;margin:0}
@@ -25,6 +25,7 @@
     .right{margin-left:auto}
     .hint{margin-top:8px;padding:10px 12px;background:rgba(255,200,0,.12);border:1px solid rgba(255,200,0,.35);border-radius:10px;display:none}
     .stats{position:absolute;right:20px;bottom:24px;min-width:260px;max-width:40vw;max-height:40vh;overflow:auto;padding:10px 12px;border-radius:10px;background:rgba(100,255,180,.08);border:1px solid rgba(100,255,180,.25);font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;display:none}
+    .toggle{background:#0f1322;border:1px solid rgba(255,255,255,.15);color:#cde3ff;border-radius:10px;padding:8px 10px}
   </style>
 </head>
 <body>
@@ -36,10 +37,16 @@
         <button id="startBtn">Start Camera</button>
         <button id="autoBtn">Auto: OFF</button>
         <button id="snapBtn" style="background:#15b26b">DETECT ONCE</button>
-        <label class="pill">Conf <span id="confVal">0.5</span></label>
-        <input id="conf" type="range" min="0.2" max="0.95" step="0.05" value="0.5">
+        <label class="pill">Conf <span id="confVal">0.55</span></label>
+        <input id="conf" type="range" min="0.2" max="0.95" step="0.05" value="0.55">
         <select id="camSelect" title="Camera"></select>
         <span class="pill right" id="status">Model: loading…</span>
+      </div>
+      <div class="row">
+        <label class="toggle"><input id="deepToggle" type="checkbox" checked/> Deep Classifier (CLIP)</label>
+        <label class="toggle"><input id="handsToggle" type="checkbox" checked/> Hand Gestures</label>
+        <label class="toggle"><input id="poseToggle" type="checkbox" checked/> Pose (Raise Hand)</label>
+        <label class="toggle">Auto CLIP/Hands every <input id="deepInterval" type="number" min="3" max="60" value="10" style="width:60px;background:#0f1322;color:#cde3ff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px"/> frames</label>
       </div>
       <div class="stack">
         <video id="cam" autoplay playsinline muted></video>
@@ -61,10 +68,16 @@
     (function loop(){bx.clearRect(0,0,W,H); for(const p of P){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;bx.beginPath();bx.arc(p.x,p.y,p.r,0,Math.PI*2);bx.fillStyle=`rgba(120,180,255,${p.a})`;bx.fill()} requestAnimationFrame(loop)})();
   </script>
 
-  <!-- TFJS + COCO-SSD + Pose-Detection -->
+  <!-- Core ML libs -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+  <!-- MediaPipe Hands assets (for runtime:'mediapipe') -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
+  <!-- Zero-shot CLIP in-browser -->
+  <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js"></script>
 
   <script>
     // DOM
@@ -73,25 +86,33 @@
     const conf=document.getElementById('conf'), confVal=document.getElementById('confVal'), camSelect=document.getElementById('camSelect');
     const statusEl=document.getElementById('status'), desc=document.getElementById('desc'), dbg=document.getElementById('dbg'), hint=document.getElementById('hint');
     const statsBox=document.getElementById('stats'), brand=document.getElementById('brand');
+    const deepToggle=document.getElementById('deepToggle'), handsToggle=document.getElementById('handsToggle'), poseToggle=document.getElementById('poseToggle');
+    const deepIntervalEl=document.getElementById('deepInterval');
 
     function log(x){ dbg.textContent += '\n' + x; dbg.scrollTop = dbg.scrollHeight; console.log(x); }
 
     // State
-    let model=null, poseDetector=null, auto=false, rafId=null, currentDeviceId=null;
-    let tracks=[]; // {id, class, bbox, score, miss}
-    let nextId=1;
+    let model=null, poseDetector=null, handsDetector=null, clipPipe=null;
+    let auto=false, currentDeviceId=null;
+    let tracks=[]; let nextId=1;
     let lastTime=performance.now(), frames=0;
-    let lastRun=0, minInterval=40; // ~25 FPS throttle for auto-loop
+    let lastRun=0, minInterval=40; // ~25 FPS
     let devicesCache=[]; let camIndex=0;
-    const PD = window.poseDetection;
+    let deepFrameCounter=0;
 
-    // Memory
-    function memLoad(){ try{ return JSON.parse(localStorage.getItem('visionMemory')||'{}'); }catch{ return {}; } }
-    function memSave(obj){ localStorage.setItem('visionMemory', JSON.stringify(obj)); }
-    function memInc(label){ const m=memLoad(); m[label]=(m[label]||0)+1; memSave(m); }
-    function memClear(){ localStorage.removeItem('visionMemory'); }
+    // CLIP labels (يمكنك تعديلها لاحقًا)
+    const CLIP_LABELS = [
+      // phones
+      "iPhone", "Samsung phone", "Huawei phone", "Xiaomi phone", "smartphone",
+      // clothing
+      "t-shirt", "shirt", "jacket", "hoodie", "jeans", "trousers", "belt", "dress", "skirt", "hat",
+      // fruits
+      "apple", "banana", "orange", "grape", "strawberry", "watermelon", "pineapple", "peach",
+      // misc common
+      "cup", "bottle", "laptop", "keyboard", "mouse", "backpack"
+    ];
 
-    // Backend choice
+    // Backends
     async function pickBackend(){
       const prefs=['webgpu','webgl','wasm'];
       for(const b of prefs){
@@ -109,7 +130,7 @@
       overlay.style.height = cam.clientHeight + 'px';
     }
 
-    // Color
+    // Simple color name for boxes
     function simpleColorName(r,g,b){
       const max=Math.max(r,g,b), min=Math.min(r,g,b);
       const s = max===0?0:(max-min)/max;
@@ -145,7 +166,7 @@
     function updateTracks(dets, threshold){
       const matched=new Set(), newTracks=[];
       for(const t of tracks){
-        let best=-1, bestIoU=0, bestIdx=-1;
+        let best=null, bestIoU=0, bestIdx=-1;
         for(let i=0;i<dets.length;i++){
           if(matched.has(i)) continue;
           const d=dets[i]; if(d.score<threshold) continue;
@@ -155,7 +176,7 @@
         if(bestIoU>0.25){
           matched.add(bestIdx);
           const nb = best.bbox.map((v,i)=> 0.7*t.bbox[i] + 0.3*v );
-          newTracks.push({id:t.id, class:best.class, bbox:nb, score:best.score, miss:0});
+          newTracks.push({id:t.id, class:best.class, bbox:nb, score:best.score, miss:0, clip: t.clip||null});
         }else{
           if(t.miss<2) newTracks.push({...t, miss:t.miss+1});
         }
@@ -164,15 +185,15 @@
         if(matched.has(i)) continue;
         const d=dets[i];
         if(d.score>=threshold){
-          newTracks.push({id:nextId++, class:d.class, bbox:d.bbox, score:d.score, miss:0});
+          newTracks.push({id:nextId++, class:d.class, bbox:d.bbox, score:d.score, miss:0, clip:null});
         }
       }
       tracks=newTracks;
       return tracks.filter(t=>t.miss===0);
     }
 
-    // Draw / summary / FPS
-    function drawBoxes(items){
+    // Draw
+    function drawBoxes(items, extra=undefined){
       const ctx=overlay.getContext('2d');
       ctx.clearRect(0,0,overlay.width,overlay.height);
       ctx.lineWidth=2; ctx.font='14px ui-monospace, Consolas, monospace';
@@ -183,16 +204,24 @@
         if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x,y,w,h,8); ctx.stroke(); }
         else { ctx.strokeRect(x,y,w,h); }
         let tag = `${o.class}${o.color?` (${o.color.name})`:''} ${o.score.toFixed(2)} #${o.id}`;
+        if (o.clip && o.clip.label && o.clip.score){
+          tag += ` · ${o.clip.label} ${o.clip.score.toFixed(2)}`;
+        }
         const tw = ctx.measureText(tag).width+8;
-        ctx.fillRect(x, y-20, tw, 20);
+        ctx.fillRect(x, Math.max(0,y-20), tw, 20);
         ctx.fillStyle='#cde3ff'; ctx.fillText(tag, x+4, y-6);
       });
+      // Write extra messages top-left
+      if(extra){
+        ctx.font='16px ui-monospace, Consolas, monospace';
+        ctx.fillStyle='#86ffe5';
+        ctx.fillText(extra, 12, 22);
+      }
     }
 
     function drawPose(poseInfo){
       if(!poseInfo) return;
       const ctx = overlay.getContext('2d');
-      // نقاط رئيسية
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
       poseInfo.keypoints.forEach(p=>{
         const sc = (p.score ?? p.confidence ?? 0);
@@ -200,31 +229,23 @@
           ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
         }
       });
-      // نص الإيماءة
-      let msg = [];
-      if(poseInfo.leftUp)  msg.push('Left hand up');
-      if(poseInfo.rightUp) msg.push('Right hand up');
-      if(msg.length){
-        ctx.font='16px ui-monospace, Consolas, monospace';
-        ctx.fillStyle='#86ffe5';
-        ctx.fillText(msg.join(' · '), 12, 22);
-      }
     }
 
-    function summarize(items, poseInfo){
-      if(items.length===0 && !poseInfo){ desc.textContent='No clear objects.'; return; }
-      const counts={}; items.forEach(p=> counts[p.class]=(counts[p.class]||0)+1 );
-      const ordered=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(', ');
-      let parts=[];
-      if(ordered) parts.push('Objects '+ordered);
-      if(poseInfo){
-        if(poseInfo.leftUp || poseInfo.rightUp){
-          parts.push('Gestures ' + [
-            poseInfo.leftUp?'Left hand up':null,
-            poseInfo.rightUp?'Right hand up':null
-          ].filter(Boolean).join(' & '));
-        }
+    // Summaries
+    function summarize(items, poseInfo, gestureSummary){
+      const parts=[];
+      if(items.length){
+        const counts={}; items.forEach(p=> counts[p.class]=(counts[p.class]||0)+1 );
+        const ordered=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(', ');
+        parts.push('Objects '+ordered);
       }
+      if(poseInfo && (poseInfo.leftUp || poseInfo.rightUp)){
+        parts.push('Gestures ' + [
+          poseInfo.leftUp?'Left hand up':null,
+          poseInfo.rightUp?'Right hand up':null
+        ].filter(Boolean).join(' & '));
+      }
+      if(gestureSummary) parts.push(gestureSummary);
       desc.textContent = parts.length? parts.join(' — ')+'.' : 'No clear objects.';
     }
 
@@ -236,33 +257,88 @@
       }
     }
 
-    // Detection (with throttle in auto mode)
+    // === Hand Gestures (heuristics) ===
+    // MediaPipe Hands keypoints indices (normalized order):
+    // 0:wrist, then per finger: [MCP, PIP, DIP, tip]
+    const FINGERS = {
+      thumb:  [1,2,3,4],
+      index:  [5,6,7,8],
+      middle: [9,10,11,12],
+      ring:   [13,14,15,16],
+      pinky:  [17,18,19,20],
+    };
+    function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
+    function fingerExtended(landmarks, finger, wrist, norm){
+      const ids = FINGERS[finger];
+      const tip = landmarks[ids[3]]; const pip = landmarks[ids[1]];
+      const d = dist(tip, wrist)/norm;
+      const bend = dist(tip, pip)/norm;
+      return d>0.35 && bend>0.18; // تقريبية
+    }
+    function classifyGesture(h){
+      const lm = h.keypoints3D?.length ? h.keypoints3D : h.keypoints; // fallback
+      if(!lm || lm.length<21) return null;
+      const wrist = lm[0];
+      const norm = dist(lm[5], lm[17]) || 1; // عرض الكف التقريبي
+      const ext = {
+        thumb:  fingerExtended(lm,'thumb', wrist, norm),
+        index:  fingerExtended(lm,'index', wrist, norm),
+        middle: fingerExtended(lm,'middle',wrist, norm),
+        ring:   fingerExtended(lm,'ring',  wrist, norm),
+        pinky:  fingerExtended(lm,'pinky', wrist, norm),
+      };
+      const extendedCount = Object.values(ext).filter(Boolean).length;
+      // قواعد بسيطة:
+      if(extendedCount>=4) return 'Open Palm';
+      if(extendedCount<=1) return 'Fist';
+      if(ext.index && ext.middle && !ext.ring && !ext.pinky) return 'Peace ✌️';
+      // إبهام للأعلى: الإبهام ممتد والباقي غير ممتدين تقريبًا
+      if(ext.thumb && !ext.index && !ext.middle) return 'Thumbs Up 👍';
+      return null;
+    }
+
+    // === Zero-shot CLIP classification on crops ===
+    async function clipClassifyCrops(items, topK=3){
+      if(!clipPipe || !deepToggle.checked || !items.length) return;
+      // اختَر أكبر مربعات
+      const sorted = [...items].sort((a,b)=>(b.bbox[2]*b.bbox[3])-(a.bbox[2]*a.bbox[3])).slice(0, topK);
+      const tmp=document.createElement('canvas'); const tctx=tmp.getContext('2d',{willReadFrequently:true});
+      for(const it of sorted){
+        const [x,y,w,h]=it.bbox.map(v=>Math.max(0, Math.floor(v)));
+        if(w<32 || h<32) continue;
+        tmp.width=w; tmp.height=h;
+        tctx.drawImage(cam, x, y, w, h, 0, 0, w, h);
+        const res = await clipPipe(tmp, CLIP_LABELS);
+        // res = [{label, score}, ...] sorted
+        if(res && res.length){
+          const best = res[0];
+          // خزّن في التراك
+          const t = tracks.find(tk=>tk.id===it.id);
+          if(t){ t.clip = {label:best.label, score:best.score}; it.clip=t.clip; }
+        }
+      }
+    }
+
+    // Detection main
     async function detectOnce(){
       try{
         fitOverlay();
-
-        // === COCO-SSD objects ===
-        const preds = await model.detect(cam);
         const threshold=parseFloat(conf.value);
+
+        // COCO-SSD
+        const preds = await model.detect(cam);
         const keep = preds.filter(p=>p.score>=threshold).map(p=>({
           class:p.class, bbox:p.bbox, score:p.score
         }));
         const active = updateTracks(keep, threshold);
+        active.forEach(a=>{ a.color = avgColorInBox(a.bbox); });
 
-        // Color + memory
-        active.forEach(a=>{
-          a.color = avgColorInBox(a.bbox);
-          memInc(a.class);
-        });
-
-        // === Pose Detection (MoveNet) ===
+        // Pose (raised hands)
         let poseInfo = null;
-        if (poseDetector){
+        if (poseToggle.checked && poseDetector){
           const poses = await poseDetector.estimatePoses(cam, { flipHorizontal:false });
           if (poses && poses[0] && poses[0].keypoints){
-            const kp = Object.fromEntries(
-              poses[0].keypoints.map(k => [k.name || k.part || k.index, k])
-            );
+            const kp = Object.fromEntries(poses[0].keypoints.map(k => [k.name || k.part || k.index, k]));
             const Ls = kp['leftShoulder'], Rs = kp['rightShoulder'];
             const Lw = kp['leftWrist'],   Rw = kp['rightWrist'];
             function good(p){ return p && (p.score ?? p.confidence ?? 0) > 0.45; }
@@ -273,10 +349,32 @@
           }
         }
 
+        // Hands + gestures
+        let gestureSummary = '';
+        if(handsToggle.checked && handsDetector){
+          const hands = await handsDetector.estimateHands(cam, {flipHorizontal:false});
+          const ctx = overlay.getContext('2d');
+          ctx.fillStyle='rgba(255,255,255,0.9)';
+          hands.forEach(h=>{
+            h.keypoints.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x,p.y,2,0,Math.PI*2); ctx.fill(); });
+            const g = classifyGesture(h);
+            if(g){ gestureSummary += (gestureSummary? ' | ':'') + g; }
+          });
+        }
+
+        // CLIP every N frames (or on single detect)
+        if(clipPipe){
+          deepFrameCounter++;
+          const N = Math.max(3, parseInt(deepIntervalEl.value)||10);
+          if(!auto || deepFrameCounter % N === 0){
+            await clipClassifyCrops(active, 3);
+          }
+        }
+
         // Draw + summarize
-        drawBoxes(active);
-        drawPose(poseInfo);
-        summarize(active, poseInfo);
+        drawBoxes(active, gestureSummary);
+        if(poseInfo) drawPose(poseInfo);
+        summarize(active, poseInfo, gestureSummary);
         tickFps();
       }catch(e){ log('detect error: '+e.message); }
     }
@@ -332,9 +430,8 @@
 
     // Stats overlay (hidden UI)
     function renderStats(){
-      const m = memLoad();
-      const entries = Object.entries(m).sort((a,b)=>b[1]-a[1]);
-      statsBox.textContent = entries.length? 'Stats (localStorage):\n'+entries.map(([k,v])=>`- ${k}: ${v}`).join('\n') : 'No memory yet.';
+      const entries = Object.entries({}); // reserved
+      statsBox.textContent = entries.length? entries.map(([k,v])=>`- ${k}: ${v}`).join('\n') : 'No stats yet.';
     }
     function toggleStats(){
       renderStats();
@@ -348,7 +445,6 @@
     autoBtn.onclick = ()=>{ auto=!auto; autoBtn.textContent='Auto: '+(auto?'ON':'OFF'); if(auto) requestAnimationFrame(autoLoop); };
     conf.oninput = ()=> confVal.textContent = conf.value;
 
-    // Keyboard shortcuts
     window.addEventListener('keydown', async (ev)=>{
       if(ev.target && (ev.target.tagName==='INPUT' || ev.target.tagName==='TEXTAREA')) return;
       if(ev.key==='a' || ev.key==='A'){ autoBtn.click(); }
@@ -365,33 +461,52 @@
         }
       }
       else if(ev.key==='s' || ev.key==='S'){
-        if(ev.shiftKey){ memClear(); renderStats(); statsBox.style.display='block'; statsBox.textContent='Memory cleared.'; }
+        if(ev.shiftKey){ toggleStats(); }
         else toggleStats();
       }
     });
 
-    // Double-click the brand to toggle stats as well
-    brand.ondblclick = toggleStats;
-
     // Init
     (async function init(){
       await pickBackend();
+
       try{
         model = await cocoSsd.load({base:'mobilenet_v2'});
         statusEl.textContent='Model: ready ✅';
         log('COCO-SSD ready');
       }catch(e){
-        statusEl.textContent='Model failed'; log('Model load error: '+e.message);
+        statusEl.textContent='Model failed'; log('COCO load error: '+e.message);
       }
 
       try{
+        const PD = window.poseDetection;
         const mdl = PD.SupportedModels.MoveNet;
-        poseDetector = await PD.createDetector(mdl, {
-          modelType: PD.movenet.modelType.SINGLEPOSE_LIGHTNING
-        });
+        poseDetector = await PD.createDetector(mdl, { modelType: PD.movenet.modelType.SINGLEPOSE_LIGHTNING });
         log('Pose model ready');
       }catch(e){
         log('Pose model load error: '+e.message);
+      }
+
+      try{
+        const HPD = window.handPoseDetection;
+        handsDetector = await HPD.createDetector(HPD.SupportedModels.MediaPipeHands, {
+          runtime: 'mediapipe',
+          solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
+          modelType: 'lite', // lite/ full
+          maxHands: 2
+        });
+        log('Hands model ready');
+      }catch(e){
+        log('Hands model load error: '+e.message);
+      }
+
+      try{
+        // Zero-shot CLIP
+        const { pipeline } = window.transformers;
+        clipPipe = await pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32');
+        log('CLIP pipeline ready');
+      }catch(e){
+        log('CLIP load error: '+e.message);
       }
 
       setTimeout(()=>startCam().catch(()=>{}), 300);
