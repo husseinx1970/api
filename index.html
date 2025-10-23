@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Jaffar ∞ Vision — Web (TFJS + Pose + Hands + CLIP)</title>
+  <title>Jaffar ∞ Vision — Omnivision (COCO + Pose + Hands + CLIP + OWL-ViT)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     *{box-sizing:border-box}html,body{height:100%;margin:0}
@@ -11,21 +11,23 @@
     .overlay{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;height:100%;padding:24px}
     .brand{position:absolute;top:24px;left:32px;font-weight:800;font-size:28px;color:#cde3ff;text-shadow:0 0 18px rgba(120,180,255,.4);user-select:none;cursor:default}
     .brand span{margin-left:6px;color:#86ffe5}
-    .panel{width:min(1100px,94vw);padding:18px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter: blur(12px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
+    .panel{width:min(1200px,96vw);padding:18px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter: blur(12px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
     .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
     button,select,input[type=range]{background:#1a71ff;color:#fff;border:none;padding:10px 12px;border-radius:10px;font-weight:600;cursor:pointer}
-    select{background:#0f1322;border:1px solid rgba(255,255,255,.15);color:#cde3ff}
+    button.secondary{background:#384764}
+    select, .toggle, textarea, input[type=number]{background:#0f1322;border:1px solid rgba(255,255,255,.15);color:#cde3ff;border-radius:10px}
     input[type=range]{width:160px}
     .pill{padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#cde3ff;font-weight:700}
     .stack{position:relative;width:100%}
-    #cam{width:100%;max-height:58vh;border-radius:12px;background:#000;display:block}
+    #cam{width:100%;max-height:56vh;border-radius:12px;background:#000;display:block}
     #overlay{position:absolute;left:0;top:0;pointer-events:none}
     .desc{min-height:28px;margin-top:8px;padding:10px 12px;background:rgba(10,16,28,.55);border:1px solid rgba(255,255,255,.12);border-radius:10px}
     .debug{margin-top:8px;padding:10px 12px;background:rgba(255,100,100,.1);border:1px solid rgba(255,150,150,.25);border-radius:10px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;max-height:22vh;overflow:auto}
     .right{margin-left:auto}
     .hint{margin-top:8px;padding:10px 12px;background:rgba(255,200,0,.12);border:1px solid rgba(255,200,0,.35);border-radius:10px;display:none}
     .stats{position:absolute;right:20px;bottom:24px;min-width:260px;max-width:40vw;max-height:40vh;overflow:auto;padding:10px 12px;border-radius:10px;background:rgba(100,255,180,.08);border:1px solid rgba(100,255,180,.25);font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;display:none}
-    .toggle{background:#0f1322;border:1px solid rgba(255,255,255,.15);color:#cde3ff;border-radius:10px;padding:8px 10px}
+    textarea{width:100%;min-height:90px;padding:10px}
+    label.small{font-size:12px;opacity:.9}
   </style>
 </head>
 <body>
@@ -37,24 +39,42 @@
         <button id="startBtn">Start Camera</button>
         <button id="autoBtn">Auto: OFF</button>
         <button id="snapBtn" style="background:#15b26b">DETECT ONCE</button>
+        <button id="scanAllBtn" class="secondary" title="Open-vocabulary detection on full frame (OWL-ViT)">SCAN ALL (OWL-ViT)</button>
         <label class="pill">Conf <span id="confVal">0.55</span></label>
         <input id="conf" type="range" min="0.2" max="0.95" step="0.05" value="0.55">
         <select id="camSelect" title="Camera"></select>
         <span class="pill right" id="status">Model: loading…</span>
       </div>
+
       <div class="row">
-        <label class="toggle"><input id="deepToggle" type="checkbox" checked/> Deep Classifier (CLIP)</label>
-        <label class="toggle"><input id="handsToggle" type="checkbox" checked/> Hand Gestures</label>
         <label class="toggle"><input id="poseToggle" type="checkbox" checked/> Pose (Raise Hand)</label>
-        <label class="toggle">Auto CLIP/Hands every <input id="deepInterval" type="number" min="3" max="60" value="10" style="width:60px;background:#0f1322;color:#cde3ff;border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px"/> frames</label>
+        <label class="toggle"><input id="handsToggle" type="checkbox" checked/> Hand Gestures</label>
+        <label class="toggle"><input id="clipToggle" type="checkbox" checked/> CLIP (Deep classifier)</label>
+        <label class="toggle"><input id="owlToggle" type="checkbox" /> Auto OWL</label>
+        <label class="toggle">Every <input id="deepInterval" type="number" min="3" max="60" value="12" style="width:64px;padding:6px"/> frames</label>
+        <label class="toggle">OWL thr <input id="owlThr" type="number" step="0.05" min="0.2" max="0.95" value="0.45" style="width:64px;padding:6px"/></label>
       </div>
-      <div class="stack">
-        <video id="cam" autoplay playsinline muted></video>
-        <canvas id="overlay"></canvas>
+
+      <div class="row" style="align-items:flex-start">
+        <div style="flex:1 1 420px">
+          <div class="stack">
+            <video id="cam" autoplay playsinline muted></video>
+            <canvas id="overlay"></canvas>
+          </div>
+          <div id="desc" class="desc">No clear objects.</div>
+          <div id="hint" class="hint"></div>
+          <div id="dbg" class="debug">Debug log…</div>
+        </div>
+        <div style="flex:1 1 320px; min-width:280px">
+          <label class="small">OWL-ViT label bank (editable, comma-separated)</label>
+          <textarea id="labelBank"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button id="loadDefault">Load default bank</button>
+            <button id="clearBoxes" class="secondary">Clear boxes</button>
+            <button id="toggleStats" class="secondary">Stats</button>
+          </div>
+        </div>
       </div>
-      <div id="desc" class="desc">No clear objects.</div>
-      <div id="hint" class="hint"></div>
-      <div id="dbg" class="debug">Debug log…</div>
     </div>
     <div id="stats" class="stats"></div>
   </div>
@@ -73,43 +93,51 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
-  <!-- MediaPipe Hands assets (for runtime:'mediapipe') -->
+  <!-- MediaPipe Hands runtime -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
-  <!-- Zero-shot CLIP in-browser -->
+  <!-- Zero-shot (CLIP + OWL-ViT) -->
   <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js"></script>
 
   <script>
     // DOM
     const cam=document.getElementById('cam'), overlay=document.getElementById('overlay');
-    const startBtn=document.getElementById('startBtn'), autoBtn=document.getElementById('autoBtn'), snapBtn=document.getElementById('snapBtn');
+    const startBtn=document.getElementById('startBtn'), autoBtn=document.getElementById('autoBtn'), snapBtn=document.getElementById('snapBtn'), scanAllBtn=document.getElementById('scanAllBtn');
     const conf=document.getElementById('conf'), confVal=document.getElementById('confVal'), camSelect=document.getElementById('camSelect');
     const statusEl=document.getElementById('status'), desc=document.getElementById('desc'), dbg=document.getElementById('dbg'), hint=document.getElementById('hint');
     const statsBox=document.getElementById('stats'), brand=document.getElementById('brand');
-    const deepToggle=document.getElementById('deepToggle'), handsToggle=document.getElementById('handsToggle'), poseToggle=document.getElementById('poseToggle');
-    const deepIntervalEl=document.getElementById('deepInterval');
+    const poseToggle=document.getElementById('poseToggle'), handsToggle=document.getElementById('handsToggle'), clipToggle=document.getElementById('clipToggle'), owlToggle=document.getElementById('owlToggle');
+    const deepIntervalEl=document.getElementById('deepInterval'), owlThrEl=document.getElementById('owlThr');
+    const labelBankEl=document.getElementById('labelBank'), loadDefaultBtn=document.getElementById('loadDefault'), clearBoxesBtn=document.getElementById('clearBoxes'), toggleStatsBtn=document.getElementById('toggleStats');
 
     function log(x){ dbg.textContent += '\n' + x; dbg.scrollTop = dbg.scrollHeight; console.log(x); }
 
     // State
-    let model=null, poseDetector=null, handsDetector=null, clipPipe=null;
+    let model=null, poseDetector=null, handsDetector=null, clipPipe=null, owlPipe=null;
     let auto=false, currentDeviceId=null;
     let tracks=[]; let nextId=1;
     let lastTime=performance.now(), frames=0;
     let lastRun=0, minInterval=40; // ~25 FPS
     let devicesCache=[]; let camIndex=0;
     let deepFrameCounter=0;
+    let lastDetections=[]; // for clearing
 
-    // CLIP labels (يمكنك تعديلها لاحقًا)
-    const CLIP_LABELS = [
-      // phones
-      "iPhone", "Samsung phone", "Huawei phone", "Xiaomi phone", "smartphone",
+    // Default OWL label bank
+    const DEFAULT_LABELS = [
+      // phones/computers
+      "smartphone","iPhone","Samsung phone","Huawei phone","Xiaomi phone","laptop","keyboard","mouse","monitor","tablet","smartwatch",
       // clothing
-      "t-shirt", "shirt", "jacket", "hoodie", "jeans", "trousers", "belt", "dress", "skirt", "hat",
-      // fruits
-      "apple", "banana", "orange", "grape", "strawberry", "watermelon", "pineapple", "peach",
-      // misc common
-      "cup", "bottle", "laptop", "keyboard", "mouse", "backpack"
+      "t-shirt","shirt","jacket","hoodie","coat","jeans","trousers","shorts","skirt","dress","belt","hat","cap","shoes","sneakers","gloves","scarf",
+      // fruits & food
+      "apple","banana","orange","grape","strawberry","watermelon","pineapple","peach","mango","pear","tomato","potato","carrot","onion","bread","pizza",
+      // household / furniture
+      "cup","mug","bottle","glass","plate","bowl","spoon","fork","knife","chair","table","sofa","lamp","tv","remote",
+      // vehicles
+      "car","truck","bus","motorcycle","bicycle","scooter",
+      // tools
+      "hammer","screwdriver","pliers","wrench","tape measure","drill",
+      // misc
+      "backpack","book","pen","paper","wallet","keys","bag","earbuds","headphones","umbrella","ball"
     ];
 
     // Backends
@@ -130,7 +158,7 @@
       overlay.style.height = cam.clientHeight + 'px';
     }
 
-    // Simple color name for boxes
+    // Colors
     function simpleColorName(r,g,b){
       const max=Math.max(r,g,b), min=Math.min(r,g,b);
       const s = max===0?0:(max-min)/max;
@@ -197,13 +225,14 @@
       const ctx=overlay.getContext('2d');
       ctx.clearRect(0,0,overlay.width,overlay.height);
       ctx.lineWidth=2; ctx.font='14px ui-monospace, Consolas, monospace';
+      lastDetections = items;
       items.forEach(o=>{
         const [x,y,w,h]=o.bbox;
         ctx.strokeStyle='rgba(120,180,255,0.95)';
         ctx.fillStyle='rgba(10,16,28,0.75)';
         if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x,y,w,h,8); ctx.stroke(); }
         else { ctx.strokeRect(x,y,w,h); }
-        let tag = `${o.class}${o.color?` (${o.color.name})`:''} ${o.score.toFixed(2)} #${o.id}`;
+        let tag = `${o.class}${o.color?` (${o.color.name})`:''} ${o.score!==undefined?o.score.toFixed(2):''} #${o.id??''}`.trim();
         if (o.clip && o.clip.label && o.clip.score){
           tag += ` · ${o.clip.label} ${o.clip.score.toFixed(2)}`;
         }
@@ -211,7 +240,6 @@
         ctx.fillRect(x, Math.max(0,y-20), tw, 20);
         ctx.fillStyle='#cde3ff'; ctx.fillText(tag, x+4, y-6);
       });
-      // Write extra messages top-left
       if(extra){
         ctx.font='16px ui-monospace, Consolas, monospace';
         ctx.fillStyle='#86ffe5';
@@ -257,29 +285,21 @@
       }
     }
 
-    // === Hand Gestures (heuristics) ===
-    // MediaPipe Hands keypoints indices (normalized order):
-    // 0:wrist, then per finger: [MCP, PIP, DIP, tip]
-    const FINGERS = {
-      thumb:  [1,2,3,4],
-      index:  [5,6,7,8],
-      middle: [9,10,11,12],
-      ring:   [13,14,15,16],
-      pinky:  [17,18,19,20],
-    };
+    // Hands heuristics
+    const FINGERS = { thumb:[1,2,3,4], index:[5,6,7,8], middle:[9,10,11,12], ring:[13,14,15,16], pinky:[17,18,19,20] };
     function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
     function fingerExtended(landmarks, finger, wrist, norm){
       const ids = FINGERS[finger];
       const tip = landmarks[ids[3]]; const pip = landmarks[ids[1]];
       const d = dist(tip, wrist)/norm;
       const bend = dist(tip, pip)/norm;
-      return d>0.35 && bend>0.18; // تقريبية
+      return d>0.35 && bend>0.18;
     }
     function classifyGesture(h){
-      const lm = h.keypoints3D?.length ? h.keypoints3D : h.keypoints; // fallback
+      const lm = h.keypoints3D?.length ? h.keypoints3D : h.keypoints;
       if(!lm || lm.length<21) return null;
       const wrist = lm[0];
-      const norm = dist(lm[5], lm[17]) || 1; // عرض الكف التقريبي
+      const norm = dist(lm[5], lm[17]) || 1;
       const ext = {
         thumb:  fingerExtended(lm,'thumb', wrist, norm),
         index:  fingerExtended(lm,'index', wrist, norm),
@@ -288,19 +308,16 @@
         pinky:  fingerExtended(lm,'pinky', wrist, norm),
       };
       const extendedCount = Object.values(ext).filter(Boolean).length;
-      // قواعد بسيطة:
       if(extendedCount>=4) return 'Open Palm';
       if(extendedCount<=1) return 'Fist';
       if(ext.index && ext.middle && !ext.ring && !ext.pinky) return 'Peace ✌️';
-      // إبهام للأعلى: الإبهام ممتد والباقي غير ممتدين تقريبًا
       if(ext.thumb && !ext.index && !ext.middle) return 'Thumbs Up 👍';
       return null;
     }
 
-    // === Zero-shot CLIP classification on crops ===
+    // CLIP classify crops
     async function clipClassifyCrops(items, topK=3){
-      if(!clipPipe || !deepToggle.checked || !items.length) return;
-      // اختَر أكبر مربعات
+      if(!clipPipe || !clipToggle.checked || !items.length) return;
       const sorted = [...items].sort((a,b)=>(b.bbox[2]*b.bbox[3])-(a.bbox[2]*a.bbox[3])).slice(0, topK);
       const tmp=document.createElement('canvas'); const tctx=tmp.getContext('2d',{willReadFrequently:true});
       for(const it of sorted){
@@ -308,32 +325,63 @@
         if(w<32 || h<32) continue;
         tmp.width=w; tmp.height=h;
         tctx.drawImage(cam, x, y, w, h, 0, 0, w, h);
-        const res = await clipPipe(tmp, CLIP_LABELS);
-        // res = [{label, score}, ...] sorted
+        const res = await clipPipe(tmp, CLIP_LABELS); // uses global labels below
         if(res && res.length){
           const best = res[0];
-          // خزّن في التراك
           const t = tracks.find(tk=>tk.id===it.id);
           if(t){ t.clip = {label:best.label, score:best.score}; it.clip=t.clip; }
         }
       }
     }
 
-    // Detection main
-    async function detectOnce(){
+    // === Zero-shot CLIP labels for classification (inside boxes) ===
+    const CLIP_LABELS = [
+      "iPhone","Samsung phone","Huawei phone","Xiaomi phone","smartphone",
+      "t-shirt","shirt","jacket","hoodie","jeans","trousers","belt","dress","skirt","hat","shoes","sneakers",
+      "apple","banana","orange","grape","strawberry","watermelon","pineapple","peach","mango",
+      "cup","bottle","laptop","keyboard","mouse","backpack","book","pen","wallet","keys"
+    ];
+
+    // === OWL-ViT open-vocabulary detection ===
+    async function owlDetectFullFrame(){
+      if(!owlPipe) return [];
+      const labels = labelBankEl.value.split(',').map(s=>s.trim()).filter(Boolean);
+      if(labels.length===0) return [];
+      // Draw current frame to canvas
+      const w = overlay.width, h = overlay.height;
+      const tmp=document.createElement('canvas'); tmp.width=w; tmp.height=h;
+      const tctx=tmp.getContext('2d',{willReadFrequently:true});
+      tctx.drawImage(cam, 0, 0, w, h);
+      const thr = Math.min(0.95, Math.max(0.2, parseFloat(owlThrEl.value)||0.45));
+      const out = await owlPipe(tmp, labels, {box_threshold:thr, text_threshold:thr});
+      // out: [{score,label,box:{x,y,w,h}}] (0..1)
+      const dets = out.map(o=>{
+        const x=o.box.x*w, y=o.box.y*h, bw=o.box.w*w, bh=o.box.h*h;
+        return { class:o.label, bbox:[x,y,bw,bh], score:o.score };
+      });
+      return dets;
+    }
+
+    // Detection
+    async function detectOnce({withOWL=false}={}){
       try{
         fitOverlay();
         const threshold=parseFloat(conf.value);
 
-        // COCO-SSD
+        // COCO-SSD baseline
         const preds = await model.detect(cam);
-        const keep = preds.filter(p=>p.score>=threshold).map(p=>({
-          class:p.class, bbox:p.bbox, score:p.score
-        }));
-        const active = updateTracks(keep, threshold);
+        let keep = preds.filter(p=>p.score>=threshold).map(p=>({ class:p.class, bbox:p.bbox, score:p.score }));
+        // Optional OWL on demand (merge)
+        if(withOWL){
+          const od = await owlDetectFullFrame();
+          keep = keep.concat(od);
+        }
+
+        // Track
+        const active = updateTracks(keep, Math.min(threshold, 0.45));
         active.forEach(a=>{ a.color = avgColorInBox(a.bbox); });
 
-        // Pose (raised hands)
+        // Pose
         let poseInfo = null;
         if (poseToggle.checked && poseDetector){
           const poses = await poseDetector.estimatePoses(cam, { flipHorizontal:false });
@@ -349,7 +397,7 @@
           }
         }
 
-        // Hands + gestures
+        // Hands
         let gestureSummary = '';
         if(handsToggle.checked && handsDetector){
           const hands = await handsDetector.estimateHands(cam, {flipHorizontal:false});
@@ -362,20 +410,20 @@
           });
         }
 
-        // CLIP every N frames (or on single detect)
-        if(clipPipe){
+        // CLIP every N frames (inside top boxes)
+        if(clipPipe && clipToggle.checked){
           deepFrameCounter++;
-          const N = Math.max(3, parseInt(deepIntervalEl.value)||10);
+          const N = Math.max(3, parseInt(deepIntervalEl.value)||12);
           if(!auto || deepFrameCounter % N === 0){
-            await clipClassifyCrops(active, 3);
+            await clipClassifyCrops(active, 4);
           }
         }
 
-        // Draw + summarize
         drawBoxes(active, gestureSummary);
         if(poseInfo) drawPose(poseInfo);
         summarize(active, poseInfo, gestureSummary);
         tickFps();
+
       }catch(e){ log('detect error: '+e.message); }
     }
 
@@ -383,7 +431,8 @@
       if(!auto) return;
       if(!lastRun || (t-lastRun)>=minInterval){
         lastRun=t;
-        detectOnce().finally(()=>{ requestAnimationFrame(autoLoop); });
+        const withOWL = owlToggle.checked && (deepFrameCounter % Math.max(8, parseInt(deepIntervalEl.value)||12) === 0);
+        detectOnce({withOWL}).finally(()=>{ requestAnimationFrame(autoLoop); });
       }else{
         requestAnimationFrame(autoLoop);
       }
@@ -428,22 +477,19 @@
       }
     }
 
-    // Stats overlay (hidden UI)
-    function renderStats(){
-      const entries = Object.entries({}); // reserved
-      statsBox.textContent = entries.length? entries.map(([k,v])=>`- ${k}: ${v}`).join('\n') : 'No stats yet.';
-    }
-    function toggleStats(){
-      renderStats();
-      statsBox.style.display = (statsBox.style.display==='none'||!statsBox.style.display)?'block':'none';
-    }
+    // UI & stats
+    function renderStats(){ statsBox.textContent = 'Tips:\n- Use SCAN ALL for open-vocabulary.\n- Lower OWL thr if it misses objects.\n- Increase Conf to reduce noise.'; }
+    function toggleStats(){ renderStats(); statsBox.style.display = (statsBox.style.display==='none'||!statsBox.style.display)?'block':'none'; }
 
-    // UI wiring
     startBtn.onclick = startCam;
     camSelect.onchange = async e=>{ currentDeviceId=e.target.value; if(cam.srcObject){ cam.srcObject.getTracks().forEach(t=>t.stop()); } await startStream(currentDeviceId); };
-    snapBtn.onclick = detectOnce;
+    snapBtn.onclick = ()=>detectOnce({withOWL:false});
+    scanAllBtn.onclick = ()=>detectOnce({withOWL:true});
     autoBtn.onclick = ()=>{ auto=!auto; autoBtn.textContent='Auto: '+(auto?'ON':'OFF'); if(auto) requestAnimationFrame(autoLoop); };
     conf.oninput = ()=> confVal.textContent = conf.value;
+    clearBoxesBtn.onclick = ()=>{ const ctx=overlay.getContext('2d'); ctx.clearRect(0,0,overlay.width,overlay.height); lastDetections=[]; };
+    toggleStatsBtn.onclick = toggleStats;
+    loadDefaultBtn.onclick = ()=>{ labelBankEl.value = DEFAULT_LABELS.join(', '); };
 
     window.addEventListener('keydown', async (ev)=>{
       if(ev.target && (ev.target.tagName==='INPUT' || ev.target.tagName==='TEXTAREA')) return;
@@ -460,15 +506,16 @@
           await startStream(id);
         }
       }
-      else if(ev.key==='s' || ev.key==='S'){
-        if(ev.shiftKey){ toggleStats(); }
-        else toggleStats();
-      }
+      else if(ev.key==='o' || ev.key==='O'){ scanAllBtn.click(); }
+      else if(ev.key==='s' || ev.key==='S'){ toggleStats(); }
     });
 
     // Init
     (async function init(){
       await pickBackend();
+
+      // Load default label bank
+      labelBankEl.value = DEFAULT_LABELS.join(', ');
 
       try{
         model = await cocoSsd.load({base:'mobilenet_v2'});
@@ -480,8 +527,7 @@
 
       try{
         const PD = window.poseDetection;
-        const mdl = PD.SupportedModels.MoveNet;
-        poseDetector = await PD.createDetector(mdl, { modelType: PD.movenet.modelType.SINGLEPOSE_LIGHTNING });
+        poseDetector = await PD.createDetector(PD.SupportedModels.MoveNet, { modelType: PD.movenet.modelType.SINGLEPOSE_LIGHTNING });
         log('Pose model ready');
       }catch(e){
         log('Pose model load error: '+e.message);
@@ -492,7 +538,7 @@
         handsDetector = await HPD.createDetector(HPD.SupportedModels.MediaPipeHands, {
           runtime: 'mediapipe',
           solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
-          modelType: 'lite', // lite/ full
+          modelType: 'lite',
           maxHands: 2
         });
         log('Hands model ready');
@@ -501,12 +547,13 @@
       }
 
       try{
-        // Zero-shot CLIP
         const { pipeline } = window.transformers;
         clipPipe = await pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32');
-        log('CLIP pipeline ready');
+        log('CLIP ready');
+        owlPipe  = await pipeline('zero-shot-object-detection', 'Xenova/owlvit-base-patch32');
+        log('OWL-ViT ready');
       }catch(e){
-        log('CLIP load error: '+e.message);
+        log('Zero-shot load error: '+e.message);
       }
 
       setTimeout(()=>startCam().catch(()=>{}), 300);
