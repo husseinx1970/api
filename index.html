@@ -2,20 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Jaffar ∞ Vision — Omnivision (COCO + Pose + Hands + CLIP + OWL-ViT)</title>
+  <title>Jaffar ∞ Vision — Omnivision (COCO + Pose + Hands + CLIP + OWL-ViT) + Scroll</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    *{box-sizing:border-box}html,body{height:100%;margin:0}
-    body{font-family:Inter,Segoe UI,Arial,sans-serif;background:#0b0f19;color:#e9eefb;overflow:hidden}
-    #bg{position:fixed;inset:0;z-index:0}
-    .overlay{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;height:100%;padding:24px}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    html,body{min-height:100%;height:auto;margin:0}
+    body{
+      font-family:Inter,Segoe UI,Arial,sans-serif;
+      background:#0b0f19;color:#e9eefb;
+      overflow:auto; /* كان hidden */
+    }
+    #bg{position:fixed;inset:0;z-index:0;height:100svh;width:100vw}
+    .overlay{
+      position:relative;z-index:1;
+      display:flex;align-items:center;justify-content:center;
+      min-height:100svh;padding:24px;
+    }
     .brand{position:absolute;top:24px;left:32px;font-weight:800;font-size:28px;color:#cde3ff;text-shadow:0 0 18px rgba(120,180,255,.4);user-select:none;cursor:default}
     .brand span{margin-left:6px;color:#86ffe5}
-    .panel{width:min(1200px,96vw);padding:18px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter: blur(12px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
+    .panel{width:min(1200px,96vw);padding:18px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(12px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
     .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
     button,select,input[type=range]{background:#1a71ff;color:#fff;border:none;padding:10px 12px;border-radius:10px;font-weight:600;cursor:pointer}
     button.secondary{background:#384764}
-    select, .toggle, textarea, input[type=number]{background:#0f1322;border:1px solid rgba(255,255,255,.15);color:#cde3ff;border-radius:10px}
+    select,.toggle,textarea,input[type=number]{background:#0f1322;border:1px solid rgba(255,255,255,.15);color:#cde3ff;border-radius:10px}
     input[type=range]{width:160px}
     .pill{padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#cde3ff;font-weight:700}
     .stack{position:relative;width:100%}
@@ -28,6 +38,14 @@
     .stats{position:absolute;right:20px;bottom:24px;min-width:260px;max-width:40vw;max-height:40vh;overflow:auto;padding:10px 12px;border-radius:10px;background:rgba(100,255,180,.08);border:1px solid rgba(100,255,180,.25);font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;display:none}
     textarea{width:100%;min-height:90px;padding:10px}
     label.small{font-size:12px;opacity:.9}
+
+    /* أزرار التمرير العائمة */
+    .scroll-btn{position:fixed;right:16px;width:46px;height:46px;border:none;border-radius:12px;
+      background:rgba(255,255,255,.12);color:#cde3ff;backdrop-filter:blur(10px);
+      box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:18px;font-weight:700;cursor:pointer;z-index:20}
+    #scrollUp{bottom:84px}
+    #scrollDown{bottom:24px}
+    .scroll-btn:active{transform:translateY(1px);background:rgba(255,255,255,.18)}
   </style>
 </head>
 <body>
@@ -50,7 +68,7 @@
         <label class="toggle"><input id="poseToggle" type="checkbox" checked/> Pose (Raise Hand)</label>
         <label class="toggle"><input id="handsToggle" type="checkbox" checked/> Hand Gestures</label>
         <label class="toggle"><input id="clipToggle" type="checkbox" checked/> CLIP (Deep classifier)</label>
-        <label class="toggle"><input id="owlToggle" type="checkbox" /> Auto OWL</label>
+        <label class="toggle"><input id="owlToggle" type="checkbox"/> Auto OWL</label>
         <label class="toggle">Every <input id="deepInterval" type="number" min="3" max="60" value="12" style="width:64px;padding:6px"/> frames</label>
         <label class="toggle">OWL thr <input id="owlThr" type="number" step="0.05" min="0.2" max="0.95" value="0.45" style="width:64px;padding:6px"/></label>
       </div>
@@ -76,8 +94,11 @@
         </div>
       </div>
     </div>
-    <div id="stats" class="stats"></div>
   </div>
+
+  <!-- أزرار التمرير العائمة -->
+  <button id="scrollUp" class="scroll-btn" title="Scroll up">▲</button>
+  <button id="scrollDown" class="scroll-btn" title="Scroll down">▼</button>
 
   <!-- BG particles -->
   <script>
@@ -109,6 +130,7 @@
     const poseToggle=document.getElementById('poseToggle'), handsToggle=document.getElementById('handsToggle'), clipToggle=document.getElementById('clipToggle'), owlToggle=document.getElementById('owlToggle');
     const deepIntervalEl=document.getElementById('deepInterval'), owlThrEl=document.getElementById('owlThr');
     const labelBankEl=document.getElementById('labelBank'), loadDefaultBtn=document.getElementById('loadDefault'), clearBoxesBtn=document.getElementById('clearBoxes'), toggleStatsBtn=document.getElementById('toggleStats');
+    const up=document.getElementById('scrollUp'), down=document.getElementById('scrollDown');
 
     function log(x){ dbg.textContent += '\n' + x; dbg.scrollTop = dbg.scrollHeight; console.log(x); }
 
@@ -120,23 +142,16 @@
     let lastRun=0, minInterval=40; // ~25 FPS
     let devicesCache=[]; let camIndex=0;
     let deepFrameCounter=0;
-    let lastDetections=[]; // for clearing
+    let lastDetections=[];
 
     // Default OWL label bank
     const DEFAULT_LABELS = [
-      // phones/computers
       "smartphone","iPhone","Samsung phone","Huawei phone","Xiaomi phone","laptop","keyboard","mouse","monitor","tablet","smartwatch",
-      // clothing
       "t-shirt","shirt","jacket","hoodie","coat","jeans","trousers","shorts","skirt","dress","belt","hat","cap","shoes","sneakers","gloves","scarf",
-      // fruits & food
       "apple","banana","orange","grape","strawberry","watermelon","pineapple","peach","mango","pear","tomato","potato","carrot","onion","bread","pizza",
-      // household / furniture
       "cup","mug","bottle","glass","plate","bowl","spoon","fork","knife","chair","table","sofa","lamp","tv","remote",
-      // vehicles
       "car","truck","bus","motorcycle","bicycle","scooter",
-      // tools
       "hammer","screwdriver","pliers","wrench","tape measure","drill",
-      // misc
       "backpack","book","pen","paper","wallet","keys","bag","earbuds","headphones","umbrella","ball"
     ];
 
@@ -325,7 +340,7 @@
         if(w<32 || h<32) continue;
         tmp.width=w; tmp.height=h;
         tctx.drawImage(cam, x, y, w, h, 0, 0, w, h);
-        const res = await clipPipe(tmp, CLIP_LABELS); // uses global labels below
+        const res = await clipPipe(tmp, CLIP_LABELS);
         if(res && res.length){
           const best = res[0];
           const t = tracks.find(tk=>tk.id===it.id);
@@ -333,8 +348,6 @@
         }
       }
     }
-
-    // === Zero-shot CLIP labels for classification (inside boxes) ===
     const CLIP_LABELS = [
       "iPhone","Samsung phone","Huawei phone","Xiaomi phone","smartphone",
       "t-shirt","shirt","jacket","hoodie","jeans","trousers","belt","dress","skirt","hat","shoes","sneakers",
@@ -342,24 +355,21 @@
       "cup","bottle","laptop","keyboard","mouse","backpack","book","pen","wallet","keys"
     ];
 
-    // === OWL-ViT open-vocabulary detection ===
+    // OWL-ViT open-vocabulary detection
     async function owlDetectFullFrame(){
       if(!owlPipe) return [];
       const labels = labelBankEl.value.split(',').map(s=>s.trim()).filter(Boolean);
       if(labels.length===0) return [];
-      // Draw current frame to canvas
       const w = overlay.width, h = overlay.height;
       const tmp=document.createElement('canvas'); tmp.width=w; tmp.height=h;
       const tctx=tmp.getContext('2d',{willReadFrequently:true});
       tctx.drawImage(cam, 0, 0, w, h);
       const thr = Math.min(0.95, Math.max(0.2, parseFloat(owlThrEl.value)||0.45));
       const out = await owlPipe(tmp, labels, {box_threshold:thr, text_threshold:thr});
-      // out: [{score,label,box:{x,y,w,h}}] (0..1)
-      const dets = out.map(o=>{
+      return out.map(o=>{
         const x=o.box.x*w, y=o.box.y*h, bw=o.box.w*w, bh=o.box.h*h;
         return { class:o.label, bbox:[x,y,bw,bh], score:o.score };
       });
-      return dets;
     }
 
     // Detection
@@ -368,17 +378,13 @@
         fitOverlay();
         const threshold=parseFloat(conf.value);
 
-        // COCO-SSD baseline
+        // COCO-SSD
         const preds = await model.detect(cam);
         let keep = preds.filter(p=>p.score>=threshold).map(p=>({ class:p.class, bbox:p.bbox, score:p.score }));
-        // Optional OWL on demand (merge)
-        if(withOWL){
-          const od = await owlDetectFullFrame();
-          keep = keep.concat(od);
-        }
+        // Optional OWL merge
+        if(withOWL){ const od = await owlDetectFullFrame(); keep = keep.concat(od); }
 
-        // Track
-        const active = updateTracks(keep, Math.min(threshold, 0.45));
+        const active = updateTracks(keep, Math.min(threshold,0.45));
         active.forEach(a=>{ a.color = avgColorInBox(a.bbox); });
 
         // Pose
@@ -410,7 +416,7 @@
           });
         }
 
-        // CLIP every N frames (inside top boxes)
+        // CLIP periodic
         if(clipPipe && clipToggle.checked){
           deepFrameCounter++;
           const N = Math.max(3, parseInt(deepIntervalEl.value)||12);
@@ -477,7 +483,7 @@
       }
     }
 
-    // UI & stats
+    // UI & Stats
     function renderStats(){ statsBox.textContent = 'Tips:\n- Use SCAN ALL for open-vocabulary.\n- Lower OWL thr if it misses objects.\n- Increase Conf to reduce noise.'; }
     function toggleStats(){ renderStats(); statsBox.style.display = (statsBox.style.display==='none'||!statsBox.style.display)?'block':'none'; }
 
@@ -492,7 +498,8 @@
     loadDefaultBtn.onclick = ()=>{ labelBankEl.value = DEFAULT_LABELS.join(', '); };
 
     window.addEventListener('keydown', async (ev)=>{
-      if(ev.target && (ev.target.tagName==='INPUT' || ev.target.tagName==='TEXTAREA')) return;
+      const t = (ev.target?.tagName)||'';
+      if(t==='INPUT' || t==='TEXTAREA') return;
       if(ev.key==='a' || ev.key==='A'){ autoBtn.click(); }
       else if(ev.key===' '){ ev.preventDefault(); snapBtn.click(); }
       else if(ev.key==='+'){ conf.value = Math.min(0.95, (+conf.value + 0.05)).toFixed(2); conf.dispatchEvent(new Event('input')); }
@@ -508,13 +515,35 @@
       }
       else if(ev.key==='o' || ev.key==='O'){ scanAllBtn.click(); }
       else if(ev.key==='s' || ev.key==='S'){ toggleStats(); }
+
+      // مفاتيح تمرير إضافية
+      else if(ev.key==='ArrowDown') window.scrollBy({top: Math.round(window.innerHeight*0.8), behavior:'smooth'});
+      else if(ev.key==='ArrowUp')   window.scrollBy({top:-Math.round(window.innerHeight*0.8), behavior:'smooth'});
+      else if(ev.key==='PageDown')  window.scrollBy({top: window.innerHeight, behavior:'smooth'});
+      else if(ev.key==='PageUp')    window.scrollBy({top:-window.innerHeight, behavior:'smooth'});
+      else if(ev.key==='Home')      window.scrollTo({top:0, behavior:'smooth'});
+      else if(ev.key==='End')       window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'});
     });
+
+    // أزرار التمرير (ضغطة عادية + ضغط مطوّل)
+    function scrollStep(dir){
+      window.scrollBy({ top: dir * Math.round(window.innerHeight * 0.8), left: 0, behavior: 'smooth' });
+    }
+    function holdScroll(button, dir){
+      let timer, running=false;
+      const start=()=>{ if(running) return; running=true; scrollStep(dir); timer=setInterval(()=>scrollStep(dir), 280); };
+      const stop =()=>{ running=false; clearInterval(timer); };
+      button.addEventListener('mousedown', start);
+      button.addEventListener('touchstart', (e)=>{ e.preventDefault(); start(); }, {passive:false});
+      ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=> button.addEventListener(ev, stop));
+    }
+    holdScroll(up, -1); holdScroll(down, +1);
 
     // Init
     (async function init(){
       await pickBackend();
 
-      // Load default label bank
+      // OWL label bank
       labelBankEl.value = DEFAULT_LABELS.join(', ');
 
       try{
