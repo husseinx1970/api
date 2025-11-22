@@ -3,75 +3,65 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>Mobile Top-Down HUD — Side Detector (Phone-ready)</title>
+<title>Mobile Top-Down HUD — Live Side Detector (Ready)</title>
 <style>
-  :root{
-    --bg:#07121a; --panel:rgba(255,255,255,0.06); --accent:#0fa3ff;
-  }
+  :root{--bg:#07121a;--panel:rgba(255,255,255,0.06);--accent:#0fa3ff}
   *{box-sizing:border-box}
   html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#eaf4fb}
-  .wrap{max-width:1100px;margin:12px auto;padding:12px}
-  .header{display:flex;gap:12px;align-items:center;justify-content:space-between}
+  .wrap{max-width:1100px;margin:10px auto;padding:12px}
+  .header{display:flex;align-items:center;justify-content:space-between;gap:8px}
   h1{font-size:18px;margin:0}
-  p{margin:0;font-size:13px;opacity:.9}
-  .controls{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
   button,select,input[type=range]{background:var(--accent);border:none;color:#012;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer}
   button.secondary{background:#384764}
   .panel{background:var(--panel);padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(6px)}
   .two{display:flex;gap:12px;flex-wrap:wrap}
-  .left{flex:1 1 520px;min-width:280px}
+  .left{flex:1 1 520px;min-width:260px}
   .right{flex:0 1 320px;min-width:220px}
-  video{display:block;width:100%;border-radius:10px;background:#000}
-  #overlay{position:absolute;left:0;top:0;pointer-events:none}
-  .stack{position:relative;border-radius:10px;overflow:hidden;background:linear-gradient(#eef2f7,#f3f6f9)}
+  .stack{position:relative;border-radius:10px;overflow:hidden;background:#000}
+  video#cam{display:block;width:100%;height:auto;background:#000}
+  canvas.overlay{position:absolute;left:0;top:0;pointer-events:none}
   .status{margin-top:8px;padding:8px;border-radius:8px;background:rgba(0,0,0,0.05);font-weight:700;color:#cde3ff}
   .small{font-size:13px;opacity:.9}
-  label{display:flex;gap:6px;align-items:center}
-  input[type=checkbox]{transform:scale(1.1)}
-  .hint{font-size:13px;color:#ffd36b;margin-top:8px}
-  canvas#hud{width:100%;height:64vh;border-radius:10px;display:block;background:#f3f6f9}
+  .hint{font-size:13px;color:#ffd36b;margin-top:8px;display:none}
   footer{margin-top:12px;text-align:center;color:#9fb6c9;font-size:13px}
-  @media(max-width:640px){
-    .two{flex-direction:column}
-    canvas#hud{height:58vh}
-  }
+  @media(max-width:640px){ .two{flex-direction:column} }
 </style>
 </head>
 <body>
   <div class="wrap">
     <div class="header">
       <div>
-        <h1>Mobile HUD — Side Object Detector</h1>
-        <p class="small">Phone = car. Camera runs hidden for detection. Test Mode uses local reference image.</p>
+        <h1>Mobile HUD — Live Side Detector</h1>
+        <div class="small">Phone = car. Uncheck Test Mode to use camera live. Use confidence slider to tune.</div>
       </div>
       <div>
         <label class="small">Confidence: <span id="confVal">0.55</span></label>
-        <input id="conf" type="range" min="0.2" max="0.95" step="0.05" value="0.55" style="vertical-align:middle">
+        <input id="conf" type="range" min="0.2" max="0.95" step="0.05" value="0.55">
       </div>
     </div>
 
     <div class="controls">
       <button id="startBtn">Start</button>
       <button id="stopBtn" class="secondary">Stop</button>
-      <label style="align-items:center"><input id="testMode" type="checkbox" /> Test mode (use reference image)</label>
-      <select id="camSelect" title="Camera" style="padding:8px 10px;border-radius:10px;background:#0f1322;color:#cde3ff;border:1px solid rgba(255,255,255,.08)"></select>
+      <label><input id="testMode" type="checkbox" checked> Test mode (use reference image)</label>
+      <select id="camSelect" title="Camera" style="padding:8px;border-radius:8px;background:#0f1322;color:#cde3ff;border:1px solid rgba(255,255,255,.08)"></select>
       <div style="margin-left:auto" id="status">Status: idle</div>
     </div>
 
     <div class="panel two">
       <div class="left">
-        <div class="stack">
-          <!-- hidden camera (used only for detection) -->
-          <video id="cam" autoplay playsinline muted style="display:none"></video>
-          <!-- visible HUD canvas (top-down visualization) -->
-          <canvas id="hud"></canvas>
+        <div class="stack" id="stack" style="aspect-ratio: 16/9;">
+          <video id="cam" autoplay playsinline muted></video>
+          <canvas id="boxes" class="overlay"></canvas>
+          <canvas id="hud" class="overlay"></canvas>
         </div>
         <div class="status" id="desc">No side objects detected.</div>
-        <div class="hint" id="hint" style="display:none"></div>
+        <div class="hint" id="hint">Grant camera permission if prompted.</div>
       </div>
 
       <div class="right">
-        <div style="margin-bottom:8px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
           <button id="showLeft" class="secondary">Show Left (debug)</button>
           <button id="showRight" class="secondary">Show Right (debug)</button>
           <button id="showBoth" class="secondary">Show Both (debug)</button>
@@ -80,39 +70,43 @@
 
         <div style="font-size:13px;background:rgba(255,255,255,0.02);padding:8px;border-radius:8px">
           <div><b>Test image (local):</b></div>
-          <div style="font-size:12px;opacity:.9;margin-top:6px">Using this reference image for Test Mode:</div>
+          <div style="font-size:12px;opacity:.9;margin-top:6px">Reference used in Test Mode:</div>
           <div style="margin-top:6px;font-family:monospace;background:#08101a;padding:8px;border-radius:6px;color:#9fb6c9">/mnt/data/C11C7C56-B110-433A-ACEC-8C2DDC0B4561.jpeg</div>
-          <div style="font-size:13px;margin-top:8px">Open page via HTTPS or localhost to enable camera on phone.</div>
+          <div style="font-size:13px;margin-top:8px">Open via HTTPS or localhost to use camera.</div>
         </div>
       </div>
     </div>
 
-    <footer>All detection runs locally on device (TensorFlow.js — coco-ssd mobilenet). No frames are sent anywhere.</footer>
+    <footer>Runs locally with TensorFlow.js coco-ssd (mobilenet). No frames leave your device.</footer>
   </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+  <!-- TFJS + COCO-SSD -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
 
 <script>
-/*
-  Mobile-ready Top-Down HUD (single-file).
-  - Uses COCO-SSD (MobileNet) for fast detection on phones.
-  - Test mode uses a local reference image:
-    /mnt/data/C11C7C56-B110-433A-ACEC-8C2DDC0B4561.jpeg
-  - Draws a simple top-down HUD with left/right bubbles.
+/* Live-ready detector + HUD.
+   - Test Mode uses local image path below.
+   - Uses model.detect(videoElement) directly for live performance.
 */
 
+const TEST_IMAGE_PATH = '/mnt/data/C11C7C56-B110-433A-ACEC-8C2DDC0B4561.jpeg';
+
 const cam = document.getElementById('cam');
-const hud = document.getElementById('hud');
-const ctx = hud.getContext('2d');
+const boxesCanvas = document.getElementById('boxes');
+const hudCanvas = document.getElementById('hud');
+const ctxBoxes = boxesCanvas.getContext('2d', { willReadFrequently: true });
+const ctxHUD = hudCanvas.getContext('2d', { willReadFrequently: true });
+
 const startBtn = document.getElementById('startBtn');
-const stopBtn = document.getElementById('stopBtn');
-const testMode = document.getElementById('testMode');
+const stopBtn  = document.getElementById('stopBtn');
+const testMode  = document.getElementById('testMode');
 const camSelect = document.getElementById('camSelect');
-const conf = document.getElementById('conf');
-const confVal = document.getElementById('confVal');
-const desc = document.getElementById('desc');
-const hint = document.getElementById('hint');
+const conf      = document.getElementById('conf');
+const confVal   = document.getElementById('confVal');
+const desc      = document.getElementById('desc');
+const hint      = document.getElementById('hint');
+const statusEl  = document.getElementById('status');
 
 const showLeft = document.getElementById('showLeft');
 const showRight = document.getElementById('showRight');
@@ -122,278 +116,278 @@ const clearBtn = document.getElementById('clear');
 let model = null;
 let stream = null;
 let running = false;
+let raf = null;
 let devices = [];
 let currentDeviceId = null;
-let raf = null;
 let lastFrameTime = 0;
-let throttleMs = 100; // ~10 FPS on phones (adjustable)
+let throttleMs = 100; // adjust for performance
 
-/* Resize canvas to fit container */
-function fit() {
-  hud.width = Math.min(window.innerWidth - 24, 920);
-  hud.height = Math.round(window.innerHeight * 0.64);
-  drawHUD(false,false);
+function fitCanvases(){
+  const rect = document.getElementById('stack').getBoundingClientRect();
+  [boxesCanvas, hudCanvas].forEach(c=>{
+    c.width = Math.floor(rect.width);
+    c.height = Math.floor(rect.height);
+    c.style.left = '0px';
+    c.style.top = '0px';
+    c.style.width = rect.width + 'px';
+    c.style.height = rect.height + 'px';
+  });
+  drawHUD(false,false,[],[]);
 }
-window.addEventListener('resize', fit);
-fit();
+window.addEventListener('resize', fitCanvases);
+window.addEventListener('orientationchange', ()=>setTimeout(fitCanvases,200));
+fitCanvases();
 
-/* Load model */
+function setStatus(t){ statusEl.textContent = t; }
+function setDesc(t){ desc.textContent = t; }
+
 async function loadModel(){
-  if(model) return;
-  status('Loading model...');
+  if(model) return model;
+  setStatus('Loading model...');
   try{
-    model = await cocoSsd.load({base: 'mobilenet_v2'});
-    status('Model ready');
+    model = await cocoSsd.load({ base: 'mobilenet_v2' });
+    setStatus('Model ready');
+    return model;
   }catch(e){
-    status('Model load failed: ' + (e.message || e));
+    setStatus('Model load failed: ' + (e.message || e));
     console.error('Model load error', e);
+    throw e;
   }
 }
 
-/* Helper status text */
-function status(t){ document.getElementById('status').textContent = t; }
-
-/* Start camera stream (hidden) */
-async function startCamera(deviceId = null){
-  try{
-    // require HTTPS except localhost
-    if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
-      hint.style.display = 'block';
-      hint.textContent = '⚠️ Camera requires HTTPS (use GitHub Pages or localhost) to run on phone.';
-    } else {
-      hint.style.display = 'none';
-    }
-
-    const constraints = deviceId ? { video: { deviceId: { exact: deviceId }, width:{ideal:1280}, height:{ideal:720} } }
-                                 : { video: { facingMode: 'environment', width:{ideal:1280}, height:{ideal:720} } };
-
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-    cam.srcObject = stream;
-    await cam.play();
-
-    // populate devices after stream started
-    await listCameras();
-    status('Camera ready');
-  }catch(e){
-    status('Camera error: ' + (e.message || e));
-    console.error('Camera start error', e);
-  }
-}
-
-/* Stop camera */
-function stopCamera(){
-  if(stream){
-    stream.getTracks().forEach(t=>t.stop());
-    stream = null;
-  }
-  if(raf) cancelAnimationFrame(raf);
-  running = false;
-  status('Stopped');
-}
-
-/* List video input devices */
 async function listCameras(){
   try{
     const devs = await navigator.mediaDevices.enumerateDevices();
-    devices = devs.filter(d => d.kind === 'videoinput');
+    devices = devs.filter(d=>d.kind==='videoinput');
     camSelect.innerHTML = devices.map((d,i)=>`<option value="${d.deviceId}">${d.label || 'Camera '+(i+1)}</option>`).join('');
     if(devices.length && !currentDeviceId) currentDeviceId = devices[0].deviceId;
   }catch(e){ console.warn('enumerateDevices failed', e); }
 }
 
-/* Core detection loop (throttled) */
+async function startCamera(deviceId=null){
+  try{
+    if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
+      hint.style.display = 'block';
+      hint.textContent = '⚠️ Camera requires HTTPS (use GitHub Pages) or open on localhost.';
+    } else hint.style.display = 'none';
+
+    const constraints = deviceId ? { video: { deviceId: { exact: deviceId }, width:{ideal:1280}, height:{ideal:720} } }
+                                 : { video: { facingMode: 'environment', width:{ideal:1280}, height:{ideal:720} } };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    cam.srcObject = stream;
+    await cam.play();
+    await listCameras();
+    setStatus('Camera ready');
+    fitCanvases();
+  }catch(e){
+    setStatus('Camera error: ' + (e.message || e));
+    console.error('startCamera error', e);
+    hint.style.display = 'block';
+    if(e.name === 'NotAllowedError') hint.textContent = 'Allow camera permission in the address bar.';
+    else if(e.name === 'NotFoundError') hint.textContent = 'No camera found.';
+    else hint.textContent = e.message || String(e);
+    throw e;
+  }
+}
+
+function stopCamera(){
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  stream = null;
+  if(raf) cancelAnimationFrame(raf);
+  running = false;
+  setStatus('Stopped');
+}
+
+function roundRect(c,x,y,w,h,r,fill,stroke){
+  if(r===undefined) r=6;
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.arcTo(x+w,y,x+w,y+h,r);
+  c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r);
+  c.arcTo(x,y,x+w,y,r);
+  c.closePath();
+  if(fill) c.fill();
+  if(stroke) c.stroke();
+}
+
+function drawHUD(left=false,right=false,leftTypes=[],rightTypes=[]){
+  const W = hudCanvas.width, H = hudCanvas.height;
+  ctxHUD.clearRect(0,0,W,H);
+  // base
+  ctxHUD.fillStyle = '#f3f6f9'; ctxHUD.fillRect(0,0,W,H);
+  const cx = W/2, cy = H*0.72;
+  // road blobs
+  ctxHUD.fillStyle = 'rgba(220,220,225,0.95)';
+  ctxHUD.beginPath();
+  ctxHUD.ellipse(cx - W*0.35, cy-40, W*0.24, H*0.34, 0, 0, Math.PI*2);
+  ctxHUD.ellipse(cx + W*0.35, cy-40, W*0.24, H*0.34, 0, 0, Math.PI*2);
+  ctxHUD.ellipse(cx, cy - 80, W*0.22, H*0.38, 0, 0, Math.PI*2);
+  ctxHUD.fill();
+  // car body
+  const carW = W*0.22, carH = H*0.26;
+  ctxHUD.save();
+  ctxHUD.translate(cx, cy - 40);
+  ctxHUD.shadowColor = 'rgba(0,0,0,0.2)'; ctxHUD.shadowBlur = 18; ctxHUD.shadowOffsetY = 8;
+  ctxHUD.fillStyle = '#ffffff'; roundRect(ctxHUD, -carW/2, -carH/2, carW, carH, 18, true, false);
+  ctxHUD.fillStyle = '#10141a'; roundRect(ctxHUD, -carW*0.33, -carH*0.33, carW*0.66, carH*0.66, 10, true, false);
+  ctxHUD.restore();
+  if(left) drawSideBubble('left', leftTypes[0]||'Side Object');
+  if(right) drawSideBubble('right', rightTypes[0]||'Side Object');
+}
+
+function drawSideBubble(side,label){
+  const W = hudCanvas.width, H = hudCanvas.height;
+  const cx = W/2, cy = H*0.72;
+  const sideX = (side==='left')?cx - W*0.35:cx + W*0.35;
+  const py = cy - 40 - H*0.06;
+  const color = (side==='left')? 'rgba(120,240,160,0.96)' : 'rgba(255,195,70,0.95)';
+  const rad = Math.min(W,H) * 0.22;
+  const g = ctxHUD.createRadialGradient(sideX, py, rad*0.05, sideX, py, rad);
+  g.addColorStop(0, color.replace(/\)$/,'1)')); g.addColorStop(1, color.replace(/\)$/,'0)'));
+  ctxHUD.fillStyle = g;
+  ctxHUD.beginPath(); ctxHUD.arc(sideX, py, rad, 0, Math.PI*2); ctxHUD.fill();
+  ctxHUD.strokeStyle = 'rgba(255,255,255,0.06)'; ctxHUD.lineWidth = 2; ctxHUD.beginPath(); ctxHUD.arc(sideX, py, rad, 0, Math.PI*2); ctxHUD.stroke();
+  // label
+  ctxHUD.fillStyle = 'rgba(0,0,0,0.65)'; ctxHUD.font = '14px sans-serif';
+  const tw = ctxHUD.measureText(label).width; const lx = sideX - tw/2 - 10; const ly = py - rad - 28;
+  roundRect(ctxHUD, lx, ly, tw + 20, 26, 8, true, false); ctxHUD.fillStyle = '#fff'; ctxHUD.fillText(label, lx + 10, ly + 18);
+}
+
+// scale and draw detection boxes on boxesCanvas
+function drawBoxes(preds, threshold, srcW, srcH){
+  const W = boxesCanvas.width, H = boxesCanvas.height;
+  ctxBoxes.clearRect(0,0,W,H);
+  ctxBoxes.lineWidth = 2;
+  const scaleX = W / srcW, scaleY = H / srcH;
+  for(const p of preds){
+    const [x,y,w,h] = p.bbox;
+    const sx = x*scaleX, sy = y*scaleY, sw = w*scaleX, sh = h*scaleY;
+    ctxBoxes.strokeStyle = p.score >= threshold ? 'rgba(10,120,255,0.95)' : 'rgba(150,150,150,0.45)';
+    ctxBoxes.strokeRect(sx, sy, sw, sh);
+    const label = `${p.class} ${(p.score*100).toFixed(0)}%`;
+    ctxBoxes.fillStyle = 'rgba(0,0,0,0.6)';
+    const tw = ctxBoxes.measureText(label).width + 8;
+    ctxBoxes.fillRect(sx, Math.max(0, sy - 20), tw, 18);
+    ctxBoxes.fillStyle = '#fff';
+    ctxBoxes.fillText(label, sx + 4, Math.max(0, sy - 6));
+  }
+}
+
+// main detection loop (uses model.detect on video element for live)
 async function loop(now){
   if(!running) return;
   if(!model){
-    // try to load model if not loaded yet
-    await loadModel();
-    if(!model){ setTimeout(()=>raf=requestAnimationFrame(loop), 300); return; }
+    try{ await loadModel(); } catch(e){ setTimeout(()=>raf = requestAnimationFrame(loop), 400); return; }
   }
-  if(now - lastFrameTime < throttleMs){
-    raf = requestAnimationFrame(loop);
-    return;
-  }
+  if(now - lastFrameTime < throttleMs){ raf = requestAnimationFrame(loop); return; }
   lastFrameTime = now;
 
-  // Source: video frame or test image
-  let tmpCanvas = document.createElement('canvas');
-  let tctx = tmpCanvas.getContext('2d');
-  if(testMode.checked){
-    // test image path (local)
-    const img = new Image();
-    img.src = '/mnt/data/C11C7C56-B110-433A-ACEC-8C2DDC0B4561.jpeg';
-    await img.decode(); // wait for image load
-    const scale = Math.min(1, 640 / img.naturalWidth);
-    tmpCanvas.width = Math.floor(img.naturalWidth * scale);
-    tmpCanvas.height = Math.floor(img.naturalHeight * scale);
-    tctx.drawImage(img, 0, 0, tmpCanvas.width, tmpCanvas.height);
-  } else {
-    if(!cam.videoWidth){
-      raf = requestAnimationFrame(loop);
-      return;
-    }
-    const scale = Math.min(1, 640 / cam.videoWidth);
-    tmpCanvas.width = Math.floor(cam.videoWidth * scale);
-    tmpCanvas.height = Math.floor(cam.videoHeight * scale);
-    tctx.drawImage(cam, 0, 0, tmpCanvas.width, tmpCanvas.height);
-  }
-
   try{
-    const preds = await model.detect(tmpCanvas);
-    const threshold = parseFloat(conf.value);
+    let preds = [];
+    let srcW = 640, srcH = 480;
+    if(testMode.checked){
+      // detect on the test image
+      const img = new Image();
+      img.src = TEST_IMAGE_PATH;
+      await img.decode();
+      // draw into a temporary canvas for model to read (coco-ssd can accept Image or canvas)
+      const tmp = document.createElement('canvas');
+      const scale = Math.min(1, 640 / img.naturalWidth);
+      tmp.width = Math.floor(img.naturalWidth * scale);
+      tmp.height = Math.floor(img.naturalHeight * scale);
+      tmp.getContext('2d').drawImage(img,0,0,tmp.width,tmp.height);
+      preds = await model.detect(tmp);
+      srcW = tmp.width; srcH = tmp.height;
+    } else {
+      // live video (pass video element directly)
+      if(!cam.videoWidth || cam.readyState < 2){
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+      // run detection directly on video element (coco-ssd supports it)
+      preds = await model.detect(cam);
+      srcW = cam.videoWidth; srcH = cam.videoHeight;
+    }
+
+    const threshold = parseFloat(conf.value || 0.55);
     confVal.textContent = threshold.toFixed(2);
 
-    // filter relevant classes
-    const useful = preds.filter(p => ['person','car','bus','truck','bicycle','motorbike'].includes(p.class) && p.score >= threshold);
+    // choose useful classes
+    const useful = preds.filter(p => ['person','car','bus','truck','bicycle','motorbike'].includes(p.class) && p.score >= 0.25);
 
-    // decide left/right by bbox center
-    let leftFound=false, rightFound=false;
-    let leftTypes=[], rightTypes=[];
+    // left/right decision (based on center normalized to source width)
+    let leftFound=false, rightFound=false, leftTypes=[], rightTypes=[];
     for(const p of useful){
       const [x,y,w,h] = p.bbox;
       const cx = x + w/2;
-      const nx = cx / tmpCanvas.width;
+      const nx = cx / srcW;
       if(nx < 0.46){ leftFound = true; leftTypes.push(p.class); }
       else if(nx > 0.54){ rightFound = true; rightTypes.push(p.class); }
       else { leftFound = true; rightFound = true; leftTypes.push(p.class); rightTypes.push(p.class); }
     }
 
+    // draw hud and boxes
     drawHUD(leftFound, rightFound, leftTypes, rightTypes);
-    status((leftFound||rightFound)? 'Object detected at side' : 'No side objects');
+    drawBoxes(preds, threshold, srcW, srcH);
+
+    // update description
+    if(leftFound || rightFound){
+      const parts = [];
+      if(leftFound) parts.push('Left: ' + (leftTypes.join(', ') || 'object'));
+      if(rightFound) parts.push('Right: ' + (rightTypes.join(', ') || 'object'));
+      setDesc('Detected: ' + parts.join(' · '));
+      setStatus('Object detected at side');
+    } else {
+      setDesc('No side objects detected.');
+      setStatus('No side objects');
+    }
 
   }catch(e){
-    console.error('detect error', e);
-    status('Detection error: ' + (e.message || e));
+    console.error('detection error', e);
+    setStatus('Detection error: ' + (e.message || e));
   } finally {
     raf = requestAnimationFrame(loop);
   }
 }
 
-/* Draw top-down HUD (center car + side bubbles) */
-function drawHUD(left=false, right=false, leftTypes=[], rightTypes=[]){
-  const W = hud.width, H = hud.height;
-  ctx.clearRect(0,0,W,H);
-  // background
-  ctx.fillStyle = '#f3f6f9';
-  ctx.fillRect(0,0,W,H);
-
-  const cx = W/2, cy = H*0.72;
-
-  // road blobs
-  ctx.fillStyle = 'rgba(220,220,225,0.9)';
-  ctx.beginPath();
-  ctx.ellipse(cx - W*0.35, cy-40, W*0.24, H*0.34, 0, 0, Math.PI*2);
-  ctx.ellipse(cx + W*0.35, cy-40, W*0.24, H*0.34, 0, 0, Math.PI*2);
-  ctx.ellipse(cx, cy - 80, W*0.22, H*0.38, 0, 0, Math.PI*2);
-  ctx.fill();
-
-  // car body
-  const carW = W*0.22, carH = H*0.26;
-  ctx.save();
-  ctx.translate(cx, cy - 40);
-  ctx.shadowColor = 'rgba(0,0,0,0.2)';
-  ctx.shadowBlur = 18;
-  ctx.shadowOffsetY = 8;
-  roundRect(ctx, -carW/2, -carH/2, carW, carH, 18, true, false);
-  ctx.fillStyle = '#10141a';
-  roundRect(ctx, -carW*0.33, -carH*0.33, carW*0.66, carH*0.66, 10, true, false);
-  ctx.restore();
-
-  if(left) drawSideBubble('left', leftTypes[0] || 'Side Object');
-  if(right) drawSideBubble('right', rightTypes[0] || 'Side Object');
-}
-
-function drawSideBubble(side, label){
-  const W = hud.width, H = hud.height;
-  const cx = W/2, cy = H*0.72;
-  const sideX = (side === 'left') ? cx - W*0.35 : cx + W*0.35;
-  const py = cy - 40 - H*0.06;
-  let color = (side==='left') ? 'rgba(120,240,160,0.96)' : 'rgba(255,195,70,0.95)';
-  const rad = Math.min(W,H) * 0.22;
-  const g = ctx.createRadialGradient(sideX, py, rad*0.05, sideX, py, rad);
-  g.addColorStop(0, color.replace(/\)$/,'1)'));
-  g.addColorStop(1, color.replace(/\)$/,'0)'));
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(sideX, py, rad, 0, Math.PI*2); ctx.fill();
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-  ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sideX, py, rad, 0, Math.PI*2); ctx.stroke();
-
-  // label
-  ctx.fillStyle = 'rgba(0,0,0,0.65)';
-  ctx.font = '14px sans-serif';
-  const tw = ctx.measureText(label).width;
-  const lx = sideX - tw/2 - 10;
-  const ly = py - rad - 28;
-  roundRect(ctx, lx, ly, tw + 20, 26, 8, true, false);
-  ctx.fillStyle = '#fff';
-  ctx.fillText(label, lx + 10, ly + 18);
-}
-
-function roundRect(ctx,x,y,w,h,r,fill,stroke){
-  if(r===undefined) r=6;
-  ctx.beginPath();
-  ctx.moveTo(x+r,y);
-  ctx.arcTo(x+w,y,x+w,y+h,r);
-  ctx.arcTo(x+w,y+h,x,y+h,r);
-  ctx.arcTo(x,y+h,x,y,r);
-  ctx.arcTo(x,y,x+w,y,r);
-  ctx.closePath();
-  if(fill) ctx.fill();
-  if(stroke) ctx.stroke();
-}
-
-/* Debug buttons (draw static bubbles) */
-showLeft.onclick = ()=> { drawHUD(true,false); desc.textContent='Detected: Left side object (debug)'; };
-showRight.onclick = ()=> { drawHUD(false,true); desc.textContent='Detected: Right side object (debug)'; };
-showBoth.onclick = ()=> { drawHUD(true,true); desc.textContent='Detected: Both sides (debug)'; };
-clearBtn.onclick = ()=> { drawHUD(false,false); desc.textContent='No side objects detected.'; };
-
-/* UI handlers */
+// UI wiring
 startBtn.onclick = async ()=>{
-  await loadModel();
-  if(!testMode.checked){
-    await listCameras();
-    await startCamera(currentDeviceId);
-  }
-  if(!running){
+  try{
+    await loadModel();
+    if(!testMode.checked){
+      await listCameras();
+      await startCamera(currentDeviceId);
+    }
     running = true;
     lastFrameTime = performance.now();
     raf = requestAnimationFrame(loop);
-    status('Running');
+    setStatus('Running');
+  }catch(e){
+    console.error('Start failed', e);
   }
 };
 stopBtn.onclick = ()=>{ stopCamera(); };
 
 camSelect.onchange = async (e)=>{
   currentDeviceId = e.target.value;
-  if(stream) stopCamera();
-  await startCamera(currentDeviceId);
+  if(stream){ stopCamera(); await startCamera(currentDeviceId); }
 };
 
-/* list cameras */
-async function listCameras(){
-  try{
-    const devicesList = await navigator.mediaDevices.enumerateDevices();
-    const vids = devicesList.filter(d=>d.kind==='videoinput');
-    devices = vids;
-    camSelect.innerHTML = vids.map((v,i)=>`<option value="${v.deviceId}">${v.label || 'Camera '+(i+1)}</option>`).join('');
-    if(vids.length) currentDeviceId = vids[0].deviceId;
-  }catch(e){ console.warn('enumerate error', e); }
-}
+showLeft.onclick = ()=>{ drawHUD(true,false,['person'],[]); setDesc('Detected: Left (debug)'); };
+showRight.onclick = ()=>{ drawHUD(false,true,[],['person']); setDesc('Detected: Right (debug)'); };
+showBoth.onclick = ()=>{ drawHUD(true,true,['car'],['car']); setDesc('Detected: Both (debug)'); };
+clearBtn.onclick = ()=>{ drawHUD(false,false); setDesc('No side objects detected.'); };
 
-/* update conf ui */
 conf.oninput = ()=> confVal.textContent = parseFloat(conf.value).toFixed(2);
 
-/* initial model load attempt and camera list */
+// init: list cameras and preload model
 (async function init(){
-  window.addEventListener('visibilitychange', ()=>{ if(document.hidden){ /* pause? */ }});
-  // try to pick a fast backend (tf will choose best automatically)
-  try{ await tf.ready(); console.log('TF backend:', tf.getBackend()); }catch(e){ console.warn('tf ready fail', e); }
+  try{ await tf.ready(); console.log('TF backend:', tf.getBackend()); }catch(e){ console.warn('tf ready failed', e); }
   await listCameras();
-  // pre-load model partially (do not block UI)
-  loadModel().catch(e=>console.warn('model preload failed', e));
-  // initial draw
+  // preload model in background without blocking UI
+  loadModel().catch(e=>console.warn('preload failed', e));
+  fitCanvases();
   drawHUD(false,false);
 })();
 </script>
