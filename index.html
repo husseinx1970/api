@@ -1,592 +1,401 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Jaffar ∞ Vision — Omnivision (COCO + Pose + Hands + CLIP + OWL-ViT) + Scroll</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    *{box-sizing:border-box}
-    html{scroll-behavior:smooth}
-    html,body{min-height:100%;height:auto;margin:0}
-    body{
-      font-family:Inter,Segoe UI,Arial,sans-serif;
-      background:#0b0f19;color:#e9eefb;
-      overflow:auto; /* كان hidden */
-    }
-    #bg{position:fixed;inset:0;z-index:0;height:100svh;width:100vw}
-    .overlay{
-      position:relative;z-index:1;
-      display:flex;align-items:center;justify-content:center;
-      min-height:100svh;padding:24px;
-    }
-    .brand{position:absolute;top:24px;left:32px;font-weight:800;font-size:28px;color:#cde3ff;text-shadow:0 0 18px rgba(120,180,255,.4);user-select:none;cursor:default}
-    .brand span{margin-left:6px;color:#86ffe5}
-    .panel{width:min(1200px,96vw);padding:18px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(12px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
-    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-    button,select,input[type=range]{background:#1a71ff;color:#fff;border:none;padding:10px 12px;border-radius:10px;font-weight:600;cursor:pointer}
-    button.secondary{background:#384764}
-    select,.toggle,textarea,input[type=number]{background:#0f1322;border:1px solid rgba(255,255,255,.15);color:#cde3ff;border-radius:10px}
-    input[type=range]{width:160px}
-    .pill{padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#cde3ff;font-weight:700}
-    .stack{position:relative;width:100%}
-    #cam{width:100%;max-height:56vh;border-radius:12px;background:#000;display:block}
-    #overlay{position:absolute;left:0;top:0;pointer-events:none}
-    .desc{min-height:28px;margin-top:8px;padding:10px 12px;background:rgba(10,16,28,.55);border:1px solid rgba(255,255,255,.12);border-radius:10px}
-    .debug{margin-top:8px;padding:10px 12px;background:rgba(255,100,100,.1);border:1px solid rgba(255,150,150,.25);border-radius:10px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;max-height:22vh;overflow:auto}
-    .right{margin-left:auto}
-    .hint{margin-top:8px;padding:10px 12px;background:rgba(255,200,0,.12);border:1px solid rgba(255,200,0,.35);border-radius:10px;display:none}
-    .stats{position:absolute;right:20px;bottom:24px;min-width:260px;max-width:40vw;max-height:40vh;overflow:auto;padding:10px 12px;border-radius:10px;background:rgba(100,255,180,.08);border:1px solid rgba(100,255,180,.25);font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;display:none}
-    textarea{width:100%;min-height:90px;padding:10px}
-    label.small{font-size:12px;opacity:.9}
-
-    /* أزرار التمرير العائمة */
-    .scroll-btn{position:fixed;right:16px;width:46px;height:46px;border:none;border-radius:12px;
-      background:rgba(255,255,255,.12);color:#cde3ff;backdrop-filter:blur(10px);
-      box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:18px;font-weight:700;cursor:pointer;z-index:20}
-    #scrollUp{bottom:84px}
-    #scrollDown{bottom:24px}
-    .scroll-btn:active{transform:translateY(1px);background:rgba(255,255,255,.18)}
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Mobile Top-Down HUD — Side Detector (Phone-ready)</title>
+<style>
+  :root{
+    --bg:#07121a; --panel:rgba(255,255,255,0.06); --accent:#0fa3ff;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#eaf4fb}
+  .wrap{max-width:1100px;margin:12px auto;padding:12px}
+  .header{display:flex;gap:12px;align-items:center;justify-content:space-between}
+  h1{font-size:18px;margin:0}
+  p{margin:0;font-size:13px;opacity:.9}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  button,select,input[type=range]{background:var(--accent);border:none;color:#012;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer}
+  button.secondary{background:#384764}
+  .panel{background:var(--panel);padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(6px)}
+  .two{display:flex;gap:12px;flex-wrap:wrap}
+  .left{flex:1 1 520px;min-width:280px}
+  .right{flex:0 1 320px;min-width:220px}
+  video{display:block;width:100%;border-radius:10px;background:#000}
+  #overlay{position:absolute;left:0;top:0;pointer-events:none}
+  .stack{position:relative;border-radius:10px;overflow:hidden;background:linear-gradient(#eef2f7,#f3f6f9)}
+  .status{margin-top:8px;padding:8px;border-radius:8px;background:rgba(0,0,0,0.05);font-weight:700;color:#cde3ff}
+  .small{font-size:13px;opacity:.9}
+  label{display:flex;gap:6px;align-items:center}
+  input[type=checkbox]{transform:scale(1.1)}
+  .hint{font-size:13px;color:#ffd36b;margin-top:8px}
+  canvas#hud{width:100%;height:64vh;border-radius:10px;display:block;background:#f3f6f9}
+  footer{margin-top:12px;text-align:center;color:#9fb6c9;font-size:13px}
+  @media(max-width:640px){
+    .two{flex-direction:column}
+    canvas#hud{height:58vh}
+  }
+</style>
 </head>
 <body>
-  <canvas id="bg"></canvas>
-  <div class="overlay">
-    <div class="brand" id="brand">Jaffar<span>∞</span> Vision</div>
-    <div class="panel">
-      <div class="row">
-        <button id="startBtn">Start Camera</button>
-        <button id="autoBtn">Auto: OFF</button>
-        <button id="snapBtn" style="background:#15b26b">DETECT ONCE</button>
-        <button id="scanAllBtn" class="secondary" title="Open-vocabulary detection on full frame (OWL-ViT)">SCAN ALL (OWL-ViT)</button>
-        <label class="pill">Conf <span id="confVal">0.55</span></label>
-        <input id="conf" type="range" min="0.2" max="0.95" step="0.05" value="0.55">
-        <select id="camSelect" title="Camera"></select>
-        <span class="pill right" id="status">Model: loading…</span>
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <h1>Mobile HUD — Side Object Detector</h1>
+        <p class="small">Phone = car. Camera runs hidden for detection. Test Mode uses local reference image.</p>
       </div>
-
-      <div class="row">
-        <label class="toggle"><input id="poseToggle" type="checkbox" checked/> Pose (Raise Hand)</label>
-        <label class="toggle"><input id="handsToggle" type="checkbox" checked/> Hand Gestures</label>
-        <label class="toggle"><input id="clipToggle" type="checkbox" checked/> CLIP (Deep classifier)</label>
-        <label class="toggle"><input id="owlToggle" type="checkbox"/> Auto OWL</label>
-        <label class="toggle">Every <input id="deepInterval" type="number" min="3" max="60" value="12" style="width:64px;padding:6px"/> frames</label>
-        <label class="toggle">OWL thr <input id="owlThr" type="number" step="0.05" min="0.2" max="0.95" value="0.45" style="width:64px;padding:6px"/></label>
+      <div>
+        <label class="small">Confidence: <span id="confVal">0.55</span></label>
+        <input id="conf" type="range" min="0.2" max="0.95" step="0.05" value="0.55" style="vertical-align:middle">
       </div>
+    </div>
 
-      <div class="row" style="align-items:flex-start">
-        <div style="flex:1 1 420px">
-          <div class="stack">
-            <video id="cam" autoplay playsinline muted></video>
-            <canvas id="overlay"></canvas>
-          </div>
-          <div id="desc" class="desc">No clear objects.</div>
-          <div id="hint" class="hint"></div>
-          <div id="dbg" class="debug">Debug log…</div>
+    <div class="controls">
+      <button id="startBtn">Start</button>
+      <button id="stopBtn" class="secondary">Stop</button>
+      <label style="align-items:center"><input id="testMode" type="checkbox" /> Test mode (use reference image)</label>
+      <select id="camSelect" title="Camera" style="padding:8px 10px;border-radius:10px;background:#0f1322;color:#cde3ff;border:1px solid rgba(255,255,255,.08)"></select>
+      <div style="margin-left:auto" id="status">Status: idle</div>
+    </div>
+
+    <div class="panel two">
+      <div class="left">
+        <div class="stack">
+          <!-- hidden camera (used only for detection) -->
+          <video id="cam" autoplay playsinline muted style="display:none"></video>
+          <!-- visible HUD canvas (top-down visualization) -->
+          <canvas id="hud"></canvas>
         </div>
-        <div style="flex:1 1 320px; min-width:280px">
-          <label class="small">OWL-ViT label bank (editable, comma-separated)</label>
-          <textarea id="labelBank"></textarea>
-          <div class="row" style="margin-top:8px">
-            <button id="loadDefault">Load default bank</button>
-            <button id="clearBoxes" class="secondary">Clear boxes</button>
-            <button id="toggleStats" class="secondary">Stats</button>
-          </div>
+        <div class="status" id="desc">No side objects detected.</div>
+        <div class="hint" id="hint" style="display:none"></div>
+      </div>
+
+      <div class="right">
+        <div style="margin-bottom:8px">
+          <button id="showLeft" class="secondary">Show Left (debug)</button>
+          <button id="showRight" class="secondary">Show Right (debug)</button>
+          <button id="showBoth" class="secondary">Show Both (debug)</button>
+          <button id="clear" class="secondary">Clear</button>
+        </div>
+
+        <div style="font-size:13px;background:rgba(255,255,255,0.02);padding:8px;border-radius:8px">
+          <div><b>Test image (local):</b></div>
+          <div style="font-size:12px;opacity:.9;margin-top:6px">Using this reference image for Test Mode:</div>
+          <div style="margin-top:6px;font-family:monospace;background:#08101a;padding:8px;border-radius:6px;color:#9fb6c9">/mnt/data/C11C7C56-B110-433A-ACEC-8C2DDC0B4561.jpeg</div>
+          <div style="font-size:13px;margin-top:8px">Open page via HTTPS or localhost to enable camera on phone.</div>
         </div>
       </div>
     </div>
+
+    <footer>All detection runs locally on device (TensorFlow.js — coco-ssd mobilenet). No frames are sent anywhere.</footer>
   </div>
 
-  <!-- أزرار التمرير العائمة -->
-  <button id="scrollUp" class="scroll-btn" title="Scroll up">▲</button>
-  <button id="scrollDown" class="scroll-btn" title="Scroll down">▼</button>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
 
-  <!-- BG particles -->
-  <script>
-    const b=document.getElementById('bg'); const bx=b.getContext('2d');
-    let W,H,P=[]; const N=100; function R(a,b){return Math.random()*(b-a)+a}
-    function size(){W=b.width=innerWidth; H=b.height=innerHeight; P=[...Array(N)].map(_=>({x:R(0,W),y:R(0,H),vx:R(-.3,.3),vy:R(-.3,.3),r:R(.6,1.8),a:R(.25,.85)}))}
-    addEventListener('resize', size); size();
-    (function loop(){bx.clearRect(0,0,W,H); for(const p of P){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;bx.beginPath();bx.arc(p.x,p.y,p.r,0,Math.PI*2);bx.fillStyle=`rgba(120,180,255,${p.a})`;bx.fill()} requestAnimationFrame(loop)})();
-  </script>
+<script>
+/*
+  Mobile-ready Top-Down HUD (single-file).
+  - Uses COCO-SSD (MobileNet) for fast detection on phones.
+  - Test mode uses a local reference image:
+    /mnt/data/C11C7C56-B110-433A-ACEC-8C2DDC0B4561.jpeg
+  - Draws a simple top-down HUD with left/right bubbles.
+*/
 
-  <!-- Core ML libs -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
-  <!-- MediaPipe Hands runtime -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
-  <!-- Zero-shot (CLIP + OWL-ViT) -->
-  <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers/dist/transformers.min.js"></script>
+const cam = document.getElementById('cam');
+const hud = document.getElementById('hud');
+const ctx = hud.getContext('2d');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const testMode = document.getElementById('testMode');
+const camSelect = document.getElementById('camSelect');
+const conf = document.getElementById('conf');
+const confVal = document.getElementById('confVal');
+const desc = document.getElementById('desc');
+const hint = document.getElementById('hint');
 
-  <script>
-    // DOM
-    const cam=document.getElementById('cam'), overlay=document.getElementById('overlay');
-    const startBtn=document.getElementById('startBtn'), autoBtn=document.getElementById('autoBtn'), snapBtn=document.getElementById('snapBtn'), scanAllBtn=document.getElementById('scanAllBtn');
-    const conf=document.getElementById('conf'), confVal=document.getElementById('confVal'), camSelect=document.getElementById('camSelect');
-    const statusEl=document.getElementById('status'), desc=document.getElementById('desc'), dbg=document.getElementById('dbg'), hint=document.getElementById('hint');
-    const statsBox=document.getElementById('stats'), brand=document.getElementById('brand');
-    const poseToggle=document.getElementById('poseToggle'), handsToggle=document.getElementById('handsToggle'), clipToggle=document.getElementById('clipToggle'), owlToggle=document.getElementById('owlToggle');
-    const deepIntervalEl=document.getElementById('deepInterval'), owlThrEl=document.getElementById('owlThr');
-    const labelBankEl=document.getElementById('labelBank'), loadDefaultBtn=document.getElementById('loadDefault'), clearBoxesBtn=document.getElementById('clearBoxes'), toggleStatsBtn=document.getElementById('toggleStats');
-    const up=document.getElementById('scrollUp'), down=document.getElementById('scrollDown');
+const showLeft = document.getElementById('showLeft');
+const showRight = document.getElementById('showRight');
+const showBoth = document.getElementById('showBoth');
+const clearBtn = document.getElementById('clear');
 
-    function log(x){ dbg.textContent += '\n' + x; dbg.scrollTop = dbg.scrollHeight; console.log(x); }
+let model = null;
+let stream = null;
+let running = false;
+let devices = [];
+let currentDeviceId = null;
+let raf = null;
+let lastFrameTime = 0;
+let throttleMs = 100; // ~10 FPS on phones (adjustable)
 
-    // State
-    let model=null, poseDetector=null, handsDetector=null, clipPipe=null, owlPipe=null;
-    let auto=false, currentDeviceId=null;
-    let tracks=[]; let nextId=1;
-    let lastTime=performance.now(), frames=0;
-    let lastRun=0, minInterval=40; // ~25 FPS
-    let devicesCache=[]; let camIndex=0;
-    let deepFrameCounter=0;
-    let lastDetections=[];
+/* Resize canvas to fit container */
+function fit() {
+  hud.width = Math.min(window.innerWidth - 24, 920);
+  hud.height = Math.round(window.innerHeight * 0.64);
+  drawHUD(false,false);
+}
+window.addEventListener('resize', fit);
+fit();
 
-    // Default OWL label bank
-    const DEFAULT_LABELS = [
-      "smartphone","iPhone","Samsung phone","Huawei phone","Xiaomi phone","laptop","keyboard","mouse","monitor","tablet","smartwatch",
-      "t-shirt","shirt","jacket","hoodie","coat","jeans","trousers","shorts","skirt","dress","belt","hat","cap","shoes","sneakers","gloves","scarf",
-      "apple","banana","orange","grape","strawberry","watermelon","pineapple","peach","mango","pear","tomato","potato","carrot","onion","bread","pizza",
-      "cup","mug","bottle","glass","plate","bowl","spoon","fork","knife","chair","table","sofa","lamp","tv","remote",
-      "car","truck","bus","motorcycle","bicycle","scooter",
-      "hammer","screwdriver","pliers","wrench","tape measure","drill",
-      "backpack","book","pen","paper","wallet","keys","bag","earbuds","headphones","umbrella","ball"
-    ];
+/* Load model */
+async function loadModel(){
+  if(model) return;
+  status('Loading model...');
+  try{
+    model = await cocoSsd.load({base: 'mobilenet_v2'});
+    status('Model ready');
+  }catch(e){
+    status('Model load failed: ' + (e.message || e));
+    console.error('Model load error', e);
+  }
+}
 
-    // Backends
-    async function pickBackend(){
-      const prefs=['webgpu','webgl','wasm'];
-      for(const b of prefs){
-        try{ await tf.setBackend(b); await tf.ready(); log('Backend: '+tf.getBackend()); break; }
-        catch(e){ log('Backend fail '+b+': '+e.message); }
-      }
-      try{ tf.env().set('WEBGPU_USE_FP16', true); }catch{}
-      statusEl.textContent = `Model: loading… (backend ${tf.getBackend()})`;
+/* Helper status text */
+function status(t){ document.getElementById('status').textContent = t; }
+
+/* Start camera stream (hidden) */
+async function startCamera(deviceId = null){
+  try{
+    // require HTTPS except localhost
+    if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
+      hint.style.display = 'block';
+      hint.textContent = '⚠️ Camera requires HTTPS (use GitHub Pages or localhost) to run on phone.';
+    } else {
+      hint.style.display = 'none';
     }
 
-    function fitOverlay(){
-      overlay.width = cam.videoWidth || 640;
-      overlay.height = cam.videoHeight || 480;
-      overlay.style.width = cam.clientWidth + 'px';
-      overlay.style.height = cam.clientHeight + 'px';
+    const constraints = deviceId ? { video: { deviceId: { exact: deviceId }, width:{ideal:1280}, height:{ideal:720} } }
+                                 : { video: { facingMode: 'environment', width:{ideal:1280}, height:{ideal:720} } };
+
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    cam.srcObject = stream;
+    await cam.play();
+
+    // populate devices after stream started
+    await listCameras();
+    status('Camera ready');
+  }catch(e){
+    status('Camera error: ' + (e.message || e));
+    console.error('Camera start error', e);
+  }
+}
+
+/* Stop camera */
+function stopCamera(){
+  if(stream){
+    stream.getTracks().forEach(t=>t.stop());
+    stream = null;
+  }
+  if(raf) cancelAnimationFrame(raf);
+  running = false;
+  status('Stopped');
+}
+
+/* List video input devices */
+async function listCameras(){
+  try{
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    devices = devs.filter(d => d.kind === 'videoinput');
+    camSelect.innerHTML = devices.map((d,i)=>`<option value="${d.deviceId}">${d.label || 'Camera '+(i+1)}</option>`).join('');
+    if(devices.length && !currentDeviceId) currentDeviceId = devices[0].deviceId;
+  }catch(e){ console.warn('enumerateDevices failed', e); }
+}
+
+/* Core detection loop (throttled) */
+async function loop(now){
+  if(!running) return;
+  if(!model){
+    // try to load model if not loaded yet
+    await loadModel();
+    if(!model){ setTimeout(()=>raf=requestAnimationFrame(loop), 300); return; }
+  }
+  if(now - lastFrameTime < throttleMs){
+    raf = requestAnimationFrame(loop);
+    return;
+  }
+  lastFrameTime = now;
+
+  // Source: video frame or test image
+  let tmpCanvas = document.createElement('canvas');
+  let tctx = tmpCanvas.getContext('2d');
+  if(testMode.checked){
+    // test image path (local)
+    const img = new Image();
+    img.src = '/mnt/data/C11C7C56-B110-433A-ACEC-8C2DDC0B4561.jpeg';
+    await img.decode(); // wait for image load
+    const scale = Math.min(1, 640 / img.naturalWidth);
+    tmpCanvas.width = Math.floor(img.naturalWidth * scale);
+    tmpCanvas.height = Math.floor(img.naturalHeight * scale);
+    tctx.drawImage(img, 0, 0, tmpCanvas.width, tmpCanvas.height);
+  } else {
+    if(!cam.videoWidth){
+      raf = requestAnimationFrame(loop);
+      return;
+    }
+    const scale = Math.min(1, 640 / cam.videoWidth);
+    tmpCanvas.width = Math.floor(cam.videoWidth * scale);
+    tmpCanvas.height = Math.floor(cam.videoHeight * scale);
+    tctx.drawImage(cam, 0, 0, tmpCanvas.width, tmpCanvas.height);
+  }
+
+  try{
+    const preds = await model.detect(tmpCanvas);
+    const threshold = parseFloat(conf.value);
+    confVal.textContent = threshold.toFixed(2);
+
+    // filter relevant classes
+    const useful = preds.filter(p => ['person','car','bus','truck','bicycle','motorbike'].includes(p.class) && p.score >= threshold);
+
+    // decide left/right by bbox center
+    let leftFound=false, rightFound=false;
+    let leftTypes=[], rightTypes=[];
+    for(const p of useful){
+      const [x,y,w,h] = p.bbox;
+      const cx = x + w/2;
+      const nx = cx / tmpCanvas.width;
+      if(nx < 0.46){ leftFound = true; leftTypes.push(p.class); }
+      else if(nx > 0.54){ rightFound = true; rightTypes.push(p.class); }
+      else { leftFound = true; rightFound = true; leftTypes.push(p.class); rightTypes.push(p.class); }
     }
 
-    // Colors
-    function simpleColorName(r,g,b){
-      const max=Math.max(r,g,b), min=Math.min(r,g,b);
-      const s = max===0?0:(max-min)/max;
-      if(max<40) return 'black';
-      if(min>220) return 'white';
-      if(s<0.1) return 'gray';
-      if(r>g+20 && r>b+20) return 'red';
-      if(g>r+20 && g>b+20) return 'green';
-      if(b>r+20 && b>g+20) return 'blue';
-      if(r>180 && g>180 && b<120) return 'yellow';
-      return 'color';
-    }
-    function avgColorInBox([x,y,w,h]){
-      const tmp=document.createElement('canvas'); tmp.width=Math.max(1,Math.floor(w)); tmp.height=Math.max(1,Math.floor(h));
-      const tctx=tmp.getContext('2d',{willReadFrequently:true});
-      tctx.drawImage(cam, x, y, w, h, 0, 0, tmp.width, tmp.height);
-      const {data} = tctx.getImageData(0,0,tmp.width,tmp.height);
-      let r=0,g=0,b=0,n=data.length/4;
-      for(let i=0;i<data.length;i+=4){ r+=data[i]; g+=data[i+1]; b+=data[i+2]; }
-      r=Math.round(r/n); g=Math.round(g/n); b=Math.round(b/n);
-      return {r,g,b,name:simpleColorName(r,g,b)};
-    }
+    drawHUD(leftFound, rightFound, leftTypes, rightTypes);
+    status((leftFound||rightFound)? 'Object detected at side' : 'No side objects');
 
-    // Tracking (IoU + smoothing)
-    function iou(a,b){
-      const [ax,ay,aw,ah]=a, [bx,by,bw,bh]=b;
-      const x1=Math.max(ax,bx), y1=Math.max(ay,by);
-      const x2=Math.min(ax+aw,bx+bw), y2=Math.min(ay+ah,bx+bh);
-      const inter=Math.max(0,x2-x1)*Math.max(0,y2-y1);
-      const ua=aw*ah + bw*bh - inter;
-      return ua>0? inter/ua : 0;
-    }
-    function updateTracks(dets, threshold){
-      const matched=new Set(), newTracks=[];
-      for(const t of tracks){
-        let best=null, bestIoU=0, bestIdx=-1;
-        for(let i=0;i<dets.length;i++){
-          if(matched.has(i)) continue;
-          const d=dets[i]; if(d.score<threshold) continue;
-          const ov = iou(t.bbox, d.bbox);
-          if(ov>bestIoU){ bestIoU=ov; bestIdx=i; best=d; }
-        }
-        if(bestIoU>0.25){
-          matched.add(bestIdx);
-          const nb = best.bbox.map((v,i)=> 0.7*t.bbox[i] + 0.3*v );
-          newTracks.push({id:t.id, class:best.class, bbox:nb, score:best.score, miss:0, clip: t.clip||null});
-        }else{
-          if(t.miss<2) newTracks.push({...t, miss:t.miss+1});
-        }
-      }
-      for(let i=0;i<dets.length;i++){
-        if(matched.has(i)) continue;
-        const d=dets[i];
-        if(d.score>=threshold){
-          newTracks.push({id:nextId++, class:d.class, bbox:d.bbox, score:d.score, miss:0, clip:null});
-        }
-      }
-      tracks=newTracks;
-      return tracks.filter(t=>t.miss===0);
-    }
+  }catch(e){
+    console.error('detect error', e);
+    status('Detection error: ' + (e.message || e));
+  } finally {
+    raf = requestAnimationFrame(loop);
+  }
+}
 
-    // Draw
-    function drawBoxes(items, extra=undefined){
-      const ctx=overlay.getContext('2d');
-      ctx.clearRect(0,0,overlay.width,overlay.height);
-      ctx.lineWidth=2; ctx.font='14px ui-monospace, Consolas, monospace';
-      lastDetections = items;
-      items.forEach(o=>{
-        const [x,y,w,h]=o.bbox;
-        ctx.strokeStyle='rgba(120,180,255,0.95)';
-        ctx.fillStyle='rgba(10,16,28,0.75)';
-        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x,y,w,h,8); ctx.stroke(); }
-        else { ctx.strokeRect(x,y,w,h); }
-        let tag = `${o.class}${o.color?` (${o.color.name})`:''} ${o.score!==undefined?o.score.toFixed(2):''} #${o.id??''}`.trim();
-        if (o.clip && o.clip.label && o.clip.score){
-          tag += ` · ${o.clip.label} ${o.clip.score.toFixed(2)}`;
-        }
-        const tw = ctx.measureText(tag).width+8;
-        ctx.fillRect(x, Math.max(0,y-20), tw, 20);
-        ctx.fillStyle='#cde3ff'; ctx.fillText(tag, x+4, y-6);
-      });
-      if(extra){
-        ctx.font='16px ui-monospace, Consolas, monospace';
-        ctx.fillStyle='#86ffe5';
-        ctx.fillText(extra, 12, 22);
-      }
-    }
+/* Draw top-down HUD (center car + side bubbles) */
+function drawHUD(left=false, right=false, leftTypes=[], rightTypes=[]){
+  const W = hud.width, H = hud.height;
+  ctx.clearRect(0,0,W,H);
+  // background
+  ctx.fillStyle = '#f3f6f9';
+  ctx.fillRect(0,0,W,H);
 
-    function drawPose(poseInfo){
-      if(!poseInfo) return;
-      const ctx = overlay.getContext('2d');
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      poseInfo.keypoints.forEach(p=>{
-        const sc = (p.score ?? p.confidence ?? 0);
-        if(sc > 0.45){
-          ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
-        }
-      });
-    }
+  const cx = W/2, cy = H*0.72;
 
-    // Summaries
-    function summarize(items, poseInfo, gestureSummary){
-      const parts=[];
-      if(items.length){
-        const counts={}; items.forEach(p=> counts[p.class]=(counts[p.class]||0)+1 );
-        const ordered=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k}: ${v}`).join(', ');
-        parts.push('Objects '+ordered);
-      }
-      if(poseInfo && (poseInfo.leftUp || poseInfo.rightUp)){
-        parts.push('Gestures ' + [
-          poseInfo.leftUp?'Left hand up':null,
-          poseInfo.rightUp?'Right hand up':null
-        ].filter(Boolean).join(' & '));
-      }
-      if(gestureSummary) parts.push(gestureSummary);
-      desc.textContent = parts.length? parts.join(' — ')+'.' : 'No clear objects.';
-    }
+  // road blobs
+  ctx.fillStyle = 'rgba(220,220,225,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(cx - W*0.35, cy-40, W*0.24, H*0.34, 0, 0, Math.PI*2);
+  ctx.ellipse(cx + W*0.35, cy-40, W*0.24, H*0.34, 0, 0, Math.PI*2);
+  ctx.ellipse(cx, cy - 80, W*0.22, H*0.38, 0, 0, Math.PI*2);
+  ctx.fill();
 
-    function tickFps(){
-      frames++; const now=performance.now();
-      if(now-lastTime>1000){
-        statusEl.textContent=`Model: ready ✅ — FPS ${frames}`;
-        frames=0; lastTime=now;
-      }
-    }
+  // car body
+  const carW = W*0.22, carH = H*0.26;
+  ctx.save();
+  ctx.translate(cx, cy - 40);
+  ctx.shadowColor = 'rgba(0,0,0,0.2)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 8;
+  roundRect(ctx, -carW/2, -carH/2, carW, carH, 18, true, false);
+  ctx.fillStyle = '#10141a';
+  roundRect(ctx, -carW*0.33, -carH*0.33, carW*0.66, carH*0.66, 10, true, false);
+  ctx.restore();
 
-    // Hands heuristics
-    const FINGERS = { thumb:[1,2,3,4], index:[5,6,7,8], middle:[9,10,11,12], ring:[13,14,15,16], pinky:[17,18,19,20] };
-    function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
-    function fingerExtended(landmarks, finger, wrist, norm){
-      const ids = FINGERS[finger];
-      const tip = landmarks[ids[3]]; const pip = landmarks[ids[1]];
-      const d = dist(tip, wrist)/norm;
-      const bend = dist(tip, pip)/norm;
-      return d>0.35 && bend>0.18;
-    }
-    function classifyGesture(h){
-      const lm = h.keypoints3D?.length ? h.keypoints3D : h.keypoints;
-      if(!lm || lm.length<21) return null;
-      const wrist = lm[0];
-      const norm = dist(lm[5], lm[17]) || 1;
-      const ext = {
-        thumb:  fingerExtended(lm,'thumb', wrist, norm),
-        index:  fingerExtended(lm,'index', wrist, norm),
-        middle: fingerExtended(lm,'middle',wrist, norm),
-        ring:   fingerExtended(lm,'ring',  wrist, norm),
-        pinky:  fingerExtended(lm,'pinky', wrist, norm),
-      };
-      const extendedCount = Object.values(ext).filter(Boolean).length;
-      if(extendedCount>=4) return 'Open Palm';
-      if(extendedCount<=1) return 'Fist';
-      if(ext.index && ext.middle && !ext.ring && !ext.pinky) return 'Peace ✌️';
-      if(ext.thumb && !ext.index && !ext.middle) return 'Thumbs Up 👍';
-      return null;
-    }
+  if(left) drawSideBubble('left', leftTypes[0] || 'Side Object');
+  if(right) drawSideBubble('right', rightTypes[0] || 'Side Object');
+}
 
-    // CLIP classify crops
-    async function clipClassifyCrops(items, topK=3){
-      if(!clipPipe || !clipToggle.checked || !items.length) return;
-      const sorted = [...items].sort((a,b)=>(b.bbox[2]*b.bbox[3])-(a.bbox[2]*a.bbox[3])).slice(0, topK);
-      const tmp=document.createElement('canvas'); const tctx=tmp.getContext('2d',{willReadFrequently:true});
-      for(const it of sorted){
-        const [x,y,w,h]=it.bbox.map(v=>Math.max(0, Math.floor(v)));
-        if(w<32 || h<32) continue;
-        tmp.width=w; tmp.height=h;
-        tctx.drawImage(cam, x, y, w, h, 0, 0, w, h);
-        const res = await clipPipe(tmp, CLIP_LABELS);
-        if(res && res.length){
-          const best = res[0];
-          const t = tracks.find(tk=>tk.id===it.id);
-          if(t){ t.clip = {label:best.label, score:best.score}; it.clip=t.clip; }
-        }
-      }
-    }
-    const CLIP_LABELS = [
-      "iPhone","Samsung phone","Huawei phone","Xiaomi phone","smartphone",
-      "t-shirt","shirt","jacket","hoodie","jeans","trousers","belt","dress","skirt","hat","shoes","sneakers",
-      "apple","banana","orange","grape","strawberry","watermelon","pineapple","peach","mango",
-      "cup","bottle","laptop","keyboard","mouse","backpack","book","pen","wallet","keys"
-    ];
+function drawSideBubble(side, label){
+  const W = hud.width, H = hud.height;
+  const cx = W/2, cy = H*0.72;
+  const sideX = (side === 'left') ? cx - W*0.35 : cx + W*0.35;
+  const py = cy - 40 - H*0.06;
+  let color = (side==='left') ? 'rgba(120,240,160,0.96)' : 'rgba(255,195,70,0.95)';
+  const rad = Math.min(W,H) * 0.22;
+  const g = ctx.createRadialGradient(sideX, py, rad*0.05, sideX, py, rad);
+  g.addColorStop(0, color.replace(/\)$/,'1)'));
+  g.addColorStop(1, color.replace(/\)$/,'0)'));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(sideX, py, rad, 0, Math.PI*2); ctx.fill();
 
-    // OWL-ViT open-vocabulary detection
-    async function owlDetectFullFrame(){
-      if(!owlPipe) return [];
-      const labels = labelBankEl.value.split(',').map(s=>s.trim()).filter(Boolean);
-      if(labels.length===0) return [];
-      const w = overlay.width, h = overlay.height;
-      const tmp=document.createElement('canvas'); tmp.width=w; tmp.height=h;
-      const tctx=tmp.getContext('2d',{willReadFrequently:true});
-      tctx.drawImage(cam, 0, 0, w, h);
-      const thr = Math.min(0.95, Math.max(0.2, parseFloat(owlThrEl.value)||0.45));
-      const out = await owlPipe(tmp, labels, {box_threshold:thr, text_threshold:thr});
-      return out.map(o=>{
-        const x=o.box.x*w, y=o.box.y*h, bw=o.box.w*w, bh=o.box.h*h;
-        return { class:o.label, bbox:[x,y,bw,bh], score:o.score };
-      });
-    }
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sideX, py, rad, 0, Math.PI*2); ctx.stroke();
 
-    // Detection
-    async function detectOnce({withOWL=false}={}){
-      try{
-        fitOverlay();
-        const threshold=parseFloat(conf.value);
+  // label
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.font = '14px sans-serif';
+  const tw = ctx.measureText(label).width;
+  const lx = sideX - tw/2 - 10;
+  const ly = py - rad - 28;
+  roundRect(ctx, lx, ly, tw + 20, 26, 8, true, false);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(label, lx + 10, ly + 18);
+}
 
-        // COCO-SSD
-        const preds = await model.detect(cam);
-        let keep = preds.filter(p=>p.score>=threshold).map(p=>({ class:p.class, bbox:p.bbox, score:p.score }));
-        // Optional OWL merge
-        if(withOWL){ const od = await owlDetectFullFrame(); keep = keep.concat(od); }
+function roundRect(ctx,x,y,w,h,r,fill,stroke){
+  if(r===undefined) r=6;
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+  if(fill) ctx.fill();
+  if(stroke) ctx.stroke();
+}
 
-        const active = updateTracks(keep, Math.min(threshold,0.45));
-        active.forEach(a=>{ a.color = avgColorInBox(a.bbox); });
+/* Debug buttons (draw static bubbles) */
+showLeft.onclick = ()=> { drawHUD(true,false); desc.textContent='Detected: Left side object (debug)'; };
+showRight.onclick = ()=> { drawHUD(false,true); desc.textContent='Detected: Right side object (debug)'; };
+showBoth.onclick = ()=> { drawHUD(true,true); desc.textContent='Detected: Both sides (debug)'; };
+clearBtn.onclick = ()=> { drawHUD(false,false); desc.textContent='No side objects detected.'; };
 
-        // Pose
-        let poseInfo = null;
-        if (poseToggle.checked && poseDetector){
-          const poses = await poseDetector.estimatePoses(cam, { flipHorizontal:false });
-          if (poses && poses[0] && poses[0].keypoints){
-            const kp = Object.fromEntries(poses[0].keypoints.map(k => [k.name || k.part || k.index, k]));
-            const Ls = kp['leftShoulder'], Rs = kp['rightShoulder'];
-            const Lw = kp['leftWrist'],   Rw = kp['rightWrist'];
-            function good(p){ return p && (p.score ?? p.confidence ?? 0) > 0.45; }
-            let leftUp=false, rightUp=false;
-            if (good(Ls) && good(Lw)) { leftUp  = (Lw.y < Ls.y - 10); }
-            if (good(Rs) && good(Rw)) { rightUp = (Rw.y < Rs.y - 10); }
-            poseInfo = { leftUp, rightUp, keypoints: poses[0].keypoints };
-          }
-        }
+/* UI handlers */
+startBtn.onclick = async ()=>{
+  await loadModel();
+  if(!testMode.checked){
+    await listCameras();
+    await startCamera(currentDeviceId);
+  }
+  if(!running){
+    running = true;
+    lastFrameTime = performance.now();
+    raf = requestAnimationFrame(loop);
+    status('Running');
+  }
+};
+stopBtn.onclick = ()=>{ stopCamera(); };
 
-        // Hands
-        let gestureSummary = '';
-        if(handsToggle.checked && handsDetector){
-          const hands = await handsDetector.estimateHands(cam, {flipHorizontal:false});
-          const ctx = overlay.getContext('2d');
-          ctx.fillStyle='rgba(255,255,255,0.9)';
-          hands.forEach(h=>{
-            h.keypoints.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x,p.y,2,0,Math.PI*2); ctx.fill(); });
-            const g = classifyGesture(h);
-            if(g){ gestureSummary += (gestureSummary? ' | ':'') + g; }
-          });
-        }
+camSelect.onchange = async (e)=>{
+  currentDeviceId = e.target.value;
+  if(stream) stopCamera();
+  await startCamera(currentDeviceId);
+};
 
-        // CLIP periodic
-        if(clipPipe && clipToggle.checked){
-          deepFrameCounter++;
-          const N = Math.max(3, parseInt(deepIntervalEl.value)||12);
-          if(!auto || deepFrameCounter % N === 0){
-            await clipClassifyCrops(active, 4);
-          }
-        }
+/* list cameras */
+async function listCameras(){
+  try{
+    const devicesList = await navigator.mediaDevices.enumerateDevices();
+    const vids = devicesList.filter(d=>d.kind==='videoinput');
+    devices = vids;
+    camSelect.innerHTML = vids.map((v,i)=>`<option value="${v.deviceId}">${v.label || 'Camera '+(i+1)}</option>`).join('');
+    if(vids.length) currentDeviceId = vids[0].deviceId;
+  }catch(e){ console.warn('enumerate error', e); }
+}
 
-        drawBoxes(active, gestureSummary);
-        if(poseInfo) drawPose(poseInfo);
-        summarize(active, poseInfo, gestureSummary);
-        tickFps();
+/* update conf ui */
+conf.oninput = ()=> confVal.textContent = parseFloat(conf.value).toFixed(2);
 
-      }catch(e){ log('detect error: '+e.message); }
-    }
-
-    function autoLoop(t){
-      if(!auto) return;
-      if(!lastRun || (t-lastRun)>=minInterval){
-        lastRun=t;
-        const withOWL = owlToggle.checked && (deepFrameCounter % Math.max(8, parseInt(deepIntervalEl.value)||12) === 0);
-        detectOnce({withOWL}).finally(()=>{ requestAnimationFrame(autoLoop); });
-      }else{
-        requestAnimationFrame(autoLoop);
-      }
-    }
-
-    // Camera
-    async function listCams(){
-      try{
-        const devs = await navigator.mediaDevices.enumerateDevices();
-        const vids = devs.filter(d=>d.kind==='videoinput');
-        devicesCache = vids;
-        camSelect.innerHTML = vids.map((v,i)=>`<option value="${v.deviceId}">${v.label||'Camera '+(i+1)}</option>`).join('');
-        if(vids[0]){ currentDeviceId = vids[0].deviceId; camIndex=0; }
-        log('Cams: '+vids.map(v=>v.label||v.deviceId).join(', '));
-      }catch(e){ log('enumerateDevices error: '+e.message); }
-    }
-    async function startStream(id=null){
-      const cs = { video: id?{deviceId:{exact:id}}:{width:{ideal:960},height:{ideal:720},frameRate:{ideal:30,max:60}}, audio:false };
-      const s = await navigator.mediaDevices.getUserMedia(cs);
-      cam.srcObject = s;
-      await new Promise(r=> cam.onloadedmetadata=r);
-      await cam.play();
-      fitOverlay();
-      log('Cam started '+cam.videoWidth+'x'+cam.videoHeight);
-      startBtn.textContent='Camera: ON';
-      hint.style.display='none';
-    }
-    async function startCam(){
-      try{
-        if(location.protocol!=='https:' && location.hostname!=='localhost'){
-          hint.textContent='⚠️ Use HTTPS (GitHub Pages) to access the camera.'; hint.style.display='block';
-        }
-        await listCams(); await startStream(currentDeviceId);
-      }catch(e){
-        log('startCam error: '+e.name+' '+e.message);
-        statusEl.textContent='Camera blocked';
-        if(e.name==='NotAllowedError'){
-          hint.textContent='⚠️ Please allow camera access from the address bar.'; hint.style.display='block';
-        }else if(e.name==='NotFoundError'){
-          hint.textContent='⚠️ No camera found. Plug one or choose another from the selector.'; hint.style.display='block';
-        }
-      }
-    }
-
-    // UI & Stats
-    function renderStats(){ statsBox.textContent = 'Tips:\n- Use SCAN ALL for open-vocabulary.\n- Lower OWL thr if it misses objects.\n- Increase Conf to reduce noise.'; }
-    function toggleStats(){ renderStats(); statsBox.style.display = (statsBox.style.display==='none'||!statsBox.style.display)?'block':'none'; }
-
-    startBtn.onclick = startCam;
-    camSelect.onchange = async e=>{ currentDeviceId=e.target.value; if(cam.srcObject){ cam.srcObject.getTracks().forEach(t=>t.stop()); } await startStream(currentDeviceId); };
-    snapBtn.onclick = ()=>detectOnce({withOWL:false});
-    scanAllBtn.onclick = ()=>detectOnce({withOWL:true});
-    autoBtn.onclick = ()=>{ auto=!auto; autoBtn.textContent='Auto: '+(auto?'ON':'OFF'); if(auto) requestAnimationFrame(autoLoop); };
-    conf.oninput = ()=> confVal.textContent = conf.value;
-    clearBoxesBtn.onclick = ()=>{ const ctx=overlay.getContext('2d'); ctx.clearRect(0,0,overlay.width,overlay.height); lastDetections=[]; };
-    toggleStatsBtn.onclick = toggleStats;
-    loadDefaultBtn.onclick = ()=>{ labelBankEl.value = DEFAULT_LABELS.join(', '); };
-
-    window.addEventListener('keydown', async (ev)=>{
-      const t = (ev.target?.tagName)||'';
-      if(t==='INPUT' || t==='TEXTAREA') return;
-      if(ev.key==='a' || ev.key==='A'){ autoBtn.click(); }
-      else if(ev.key===' '){ ev.preventDefault(); snapBtn.click(); }
-      else if(ev.key==='+'){ conf.value = Math.min(0.95, (+conf.value + 0.05)).toFixed(2); conf.dispatchEvent(new Event('input')); }
-      else if(ev.key==='-'){ conf.value = Math.max(0.2, (+conf.value - 0.05)).toFixed(2); conf.dispatchEvent(new Event('input')); }
-      else if(ev.key==='c' || ev.key==='C'){
-        if(devicesCache.length>1){
-          camIndex = (camIndex+1)%devicesCache.length;
-          camSelect.selectedIndex = camIndex;
-          const id = devicesCache[camIndex].deviceId;
-          if(cam.srcObject){ cam.srcObject.getTracks().forEach(t=>t.stop()); }
-          await startStream(id);
-        }
-      }
-      else if(ev.key==='o' || ev.key==='O'){ scanAllBtn.click(); }
-      else if(ev.key==='s' || ev.key==='S'){ toggleStats(); }
-
-      // مفاتيح تمرير إضافية
-      else if(ev.key==='ArrowDown') window.scrollBy({top: Math.round(window.innerHeight*0.8), behavior:'smooth'});
-      else if(ev.key==='ArrowUp')   window.scrollBy({top:-Math.round(window.innerHeight*0.8), behavior:'smooth'});
-      else if(ev.key==='PageDown')  window.scrollBy({top: window.innerHeight, behavior:'smooth'});
-      else if(ev.key==='PageUp')    window.scrollBy({top:-window.innerHeight, behavior:'smooth'});
-      else if(ev.key==='Home')      window.scrollTo({top:0, behavior:'smooth'});
-      else if(ev.key==='End')       window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'});
-    });
-
-    // أزرار التمرير (ضغطة عادية + ضغط مطوّل)
-    function scrollStep(dir){
-      window.scrollBy({ top: dir * Math.round(window.innerHeight * 0.8), left: 0, behavior: 'smooth' });
-    }
-    function holdScroll(button, dir){
-      let timer, running=false;
-      const start=()=>{ if(running) return; running=true; scrollStep(dir); timer=setInterval(()=>scrollStep(dir), 280); };
-      const stop =()=>{ running=false; clearInterval(timer); };
-      button.addEventListener('mousedown', start);
-      button.addEventListener('touchstart', (e)=>{ e.preventDefault(); start(); }, {passive:false});
-      ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=> button.addEventListener(ev, stop));
-    }
-    holdScroll(up, -1); holdScroll(down, +1);
-
-    // Init
-    (async function init(){
-      await pickBackend();
-
-      // OWL label bank
-      labelBankEl.value = DEFAULT_LABELS.join(', ');
-
-      try{
-        model = await cocoSsd.load({base:'mobilenet_v2'});
-        statusEl.textContent='Model: ready ✅';
-        log('COCO-SSD ready');
-      }catch(e){
-        statusEl.textContent='Model failed'; log('COCO load error: '+e.message);
-      }
-
-      try{
-        const PD = window.poseDetection;
-        poseDetector = await PD.createDetector(PD.SupportedModels.MoveNet, { modelType: PD.movenet.modelType.SINGLEPOSE_LIGHTNING });
-        log('Pose model ready');
-      }catch(e){
-        log('Pose model load error: '+e.message);
-      }
-
-      try{
-        const HPD = window.handPoseDetection;
-        handsDetector = await HPD.createDetector(HPD.SupportedModels.MediaPipeHands, {
-          runtime: 'mediapipe',
-          solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
-          modelType: 'lite',
-          maxHands: 2
-        });
-        log('Hands model ready');
-      }catch(e){
-        log('Hands model load error: '+e.message);
-      }
-
-      try{
-        const { pipeline } = window.transformers;
-        clipPipe = await pipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32');
-        log('CLIP ready');
-        owlPipe  = await pipeline('zero-shot-object-detection', 'Xenova/owlvit-base-patch32');
-        log('OWL-ViT ready');
-      }catch(e){
-        log('Zero-shot load error: '+e.message);
-      }
-
-      setTimeout(()=>startCam().catch(()=>{}), 300);
-    })();
-  </script>
+/* initial model load attempt and camera list */
+(async function init(){
+  window.addEventListener('visibilitychange', ()=>{ if(document.hidden){ /* pause? */ }});
+  // try to pick a fast backend (tf will choose best automatically)
+  try{ await tf.ready(); console.log('TF backend:', tf.getBackend()); }catch(e){ console.warn('tf ready fail', e); }
+  await listCameras();
+  // pre-load model partially (do not block UI)
+  loadModel().catch(e=>console.warn('model preload failed', e));
+  // initial draw
+  drawHUD(false,false);
+})();
+</script>
 </body>
 </html>
