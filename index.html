@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>Live Side Detector — 급</title>
+<title>Live Side Detector — Mobile HUD</title>
 <style>
   :root{--bg:#0b0f19;--accent:#0fa3ff}
   *{box-sizing:border-box}
@@ -61,7 +61,7 @@
 
         <div style="font-size:13px;background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;color:#cde3ff">
           <div><b>Test image (local):</b></div>
-          <div style="font-family:monospace;margin-top:6px;color:#9fb6c9">/mnt/data/C11C7C56-B110-433A-ACEC-8C2DDC0B4561.jpeg</div>
+          <div style="font-family:monospace;margin-top:6px;color:#9fb6c9">side_image.jpeg (included in ZIP)</div>
           <div style="margin-top:8px;font-size:12px">Use HTTPS or localhost for live camera access.</div>
         </div>
       </div>
@@ -75,8 +75,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
 
 <script>
-/* متغيّر مسار الصورة المرجعية (المرفوعة) */
-const TEST_IMAGE_PATH = '/mnt/data/C11C7C56-B110-433A-ACEC-8C2DDC0B4561.jpeg';
+/* This page uses the included side_image.jpeg as the Test Mode reference.
+   To run live camera detection, open the page via localhost or HTTPS and uncheck Test Mode. */
+
+const TEST_IMAGE_PATH = 'side_image.jpeg'; // relative file in same folder
 
 const cam = document.getElementById('cam');
 const boxesCanvas = document.getElementById('boxes');
@@ -141,7 +143,7 @@ async function startCamera(deviceId=null){
     } else setHint('');
     const constraints = deviceId ? { video:{ deviceId:{ exact: deviceId }, width:{ideal:1280}, height:{ideal:720} } } 
                                  : { video:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} } };
-    stream = await navigator.mediaDevices.getUserMedia(constraints); // <-- هذا السطر يطلق مربع الإذن فوراً
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
     cam.srcObject = stream;
     await cam.play();
     await listCameras();
@@ -281,19 +283,12 @@ async function loop(now){
   }
 }
 
-/* UI */
 startBtn.onclick = async ()=>{
   try{
-    await listCameras(); // populate selector
-    loadModel().catch(()=>{}); // preload non-blocking
-    // If Test Mode off -> start camera (this triggers browser permission prompt)
+    await listCameras();
+    loadModel().catch(()=>{});
     if(!testMode.checked){
-      try{
-        await startCamera(camSelect.value || currentDeviceId || null);
-      }catch(e){
-        // fallback to facingMode if deviceId failed
-        try{ await startCamera(null); }catch(err){ console.error(err); }
-      }
+      try{ await startCamera(camSelect.value || currentDeviceId || null); }catch(e){ try{ await startCamera(null); }catch(err){ console.error(err); } }
     }
     running = true;
     lastFrameTime = performance.now();
@@ -302,23 +297,14 @@ startBtn.onclick = async ()=>{
 };
 
 stopBtn.onclick = ()=> stopCamera();
-
 camSelect.onchange = (e)=> currentDeviceId = e.target.value;
-
 showLeft.onclick = ()=>{ drawHUD(true,false); setDesc('Detected: Left (debug)'); };
 showRight.onclick = ()=>{ drawHUD(false,true); setDesc('Detected: Right (debug)'); };
 showBoth.onclick = ()=>{ drawHUD(true,true); setDesc('Detected: Both (debug)'); };
 clearBtn.onclick = ()=>{ drawHUD(false,false); setDesc('No side objects detected.'); };
-
 conf.oninput = ()=> confVal.textContent = parseFloat(conf.value).toFixed(2);
 
-/* init */
-(async function init(){
-  try{ await tf.ready(); console.log('TF backend:', tf.getBackend()); }catch(e){ console.warn('tf ready', e); }
-  await listCameras();
-  loadModel().catch(()=>{});
-  fitCanvases();
-})();
+(async function init(){ try{ await tf.ready(); console.log('TF backend:', tf.getBackend()); }catch(e){ console.warn('tf ready', e); } await listCameras(); loadModel().catch(()=>{}); fitCanvases(); })();
 </script>
 </body>
 </html>
